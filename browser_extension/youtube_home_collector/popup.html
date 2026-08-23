@@ -5,17 +5,28 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>YouTube Home Collector</title>
   <style>
-    body { font-family: Arial, sans-serif; width: 320px; margin: 14px; }
+    body { font-family: Arial, sans-serif; width: 330px; margin: 14px; }
     label { display: block; margin-top: 10px; font-size: 13px; }
     input { width: 100%; box-sizing: border-box; padding: 7px; margin-top: 4px; }
     button { width: 100%; margin-top: 14px; padding: 10px; cursor: pointer; }
     #status { margin-top: 12px; white-space: pre-wrap; font-size: 12px; line-height: 1.4; }
     .hint { color: #555; font-size: 12px; line-height: 1.4; }
+    .profile-box { margin: 10px 0 4px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
+    .profile-id { margin-top: 5px; font-family: monospace; font-size: 11px; color: #666; word-break: break-all; }
   </style>
 </head>
 <body>
   <strong>YouTube Home Collector</strong>
   <p class="hint">Dùng ngay profile trình duyệt hiện tại. Chỉ đọc card Home và scroll, không click/play video.</p>
+
+  <div class="profile-box">
+    <label>
+      Tên profile nghiên cứu
+      <input id="profileLabel" type="text" maxlength="60" placeholder="Ví dụ: Profile A, Music test, New profile">
+    </label>
+    <div class="profile-id">ID: <span id="profileId">đang tạo...</span></div>
+    <div class="hint">ID được lưu riêng trong browser profile hiện tại. Hai Chrome profile sẽ có hai ID khác nhau.</div>
+  </div>
 
   <label>
     Số lần scroll
