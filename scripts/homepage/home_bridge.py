@@ -3,7 +3,8 @@
 
 Pipeline:
 browser Home snapshot
-  -> save raw snapshot
+  -> stable browser-profile identity
+  -> save raw snapshot in that profile's folder
   -> optional YouTube Data API enrichment when YOUTUBE_API_KEY is set
   -> v2 context/entity classifier
   -> recommendation-exposure profile JSON + HTML report
@@ -19,10 +20,13 @@ Optional:
 from __future__ import annotations
 
 import argparse
+import html as html_lib
 import json
 import os
+import re
 import subprocess
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -42,24 +46,84 @@ def run_command(command: list[str], repo_root: Path) -> None:
     subprocess.run(command, cwd=str(repo_root), check=True)
 
 
+def profile_short_id(profile_id: object) -> str:
+    value = str(profile_id or "").strip()
+    if value.startswith("browser-"):
+        value = value[len("browser-"):]
+    value = re.sub(r"[^A-Za-z0-9]", "", value)
+    return value[:8] or "legacy"
+
+
+def normalize_profile(raw: object) -> dict:
+    profile = raw if isinstance(raw, dict) else {}
+    profile_id = str(profile.get("profile_id") or "legacy-unidentified").strip()
+    short_id = profile_short_id(profile_id)
+    label = str(profile.get("profile_label") or f"Profile {short_id}").strip()[:60]
+    return {
+        "profile_id": profile_id,
+        "profile_label": label,
+        "profile_short_id": short_id,
+        "identity_source": str(profile.get("identity_source") or "legacy_or_unknown"),
+    }
+
+
+def profile_folder(profile: dict) -> str:
+    # Folder identity is ID-based so renaming a label does not split history.
+    return f"profile_{profile['profile_short_id']}"
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def inject_profile_metadata(path: Path, profile: dict) -> None:
+    if not path.exists():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    payload["collector_profile"] = profile
+    write_json(path, payload)
+
+
+def annotate_profile_html(path: Path, profile: dict) -> None:
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    marker = '<div class="muted">Recommendation Prior · Home exposure</div>'
+    banner = (
+        '<div style="margin-bottom:10px;padding:10px 12px;border-radius:10px;'
+        'background:#20232a;font-size:.92rem">'
+        '<strong>Browser profile:</strong> '
+        f'{html_lib.escape(profile["profile_label"])} '
+        f'· <code>{html_lib.escape(profile["profile_short_id"])}</code>'
+        '</div>'
+    )
+    if marker in text:
+        text = text.replace(marker, banner + marker, 1)
+    path.write_text(text, encoding="utf-8")
+
+
 def main() -> None:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[2]
 
-    snapshot_dir = repo_root / "data" / "home_snapshots"
-    enriched_dir = repo_root / "data" / "home_enriched"
-    classified_dir = repo_root / "data" / "home_classified"
-    profile_dir = repo_root / "data" / "profile_reports"
+    snapshot_root = repo_root / "data" / "home_snapshots"
+    enriched_root = repo_root / "data" / "home_enriched"
+    classified_root = repo_root / "data" / "home_classified"
+    profile_root = repo_root / "data" / "profile_reports"
 
     classifier = repo_root / "scripts" / "classification" / "classify_homepage_v2.py"
     enricher = repo_root / "scripts" / "enrichment" / "youtube_enrich.py"
     profile_builder = repo_root / "scripts" / "profile" / "build_profile_report.py"
 
-    for folder in (snapshot_dir, enriched_dir, classified_dir, profile_dir):
+    for folder in (snapshot_root, enriched_root, classified_root, profile_root):
         folder.mkdir(parents=True, exist_ok=True)
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "YouTubeLibraryBridge/0.2"
+        server_version = "YouTubeLibraryBridge/0.3"
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -97,6 +161,21 @@ def main() -> None:
                 self._json_response(400, {"error": "invalid_snapshot_schema"})
                 return
 
+            profile = normalize_profile(payload.get("collector_profile"))
+            payload["collector_profile"] = profile
+            folder_name = profile_folder(profile)
+
+            snapshot_dir = snapshot_root / folder_name
+            enriched_dir = enriched_root / folder_name
+            classified_dir = classified_root / folder_name
+            profile_dir = profile_root / folder_name
+            for folder in (snapshot_dir, enriched_dir, classified_dir, profile_dir):
+                folder.mkdir(parents=True, exist_ok=True)
+
+            # Keep a small local profile manifest so folders remain understandable.
+            profile_manifest = profile_root / folder_name / "profile_identity.json"
+            write_json(profile_manifest, profile)
+
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")[:-3]
             filename = f"home_{timestamp}.json"
             stem = Path(filename).stem
@@ -107,10 +186,7 @@ def main() -> None:
             profile_json = profile_dir / f"{stem}.profile.json"
             profile_html = profile_dir / f"{stem}.profile.html"
 
-            snapshot_path.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
+            write_json(snapshot_path, payload)
 
             classification_input = snapshot_path
             enrichment_status = "skipped"
@@ -138,6 +214,9 @@ def main() -> None:
                         [sys.executable, str(classifier), str(classification_input), "--output", str(classified_path)],
                         repo_root,
                     )
+                    # classify_homepage_v2 intentionally creates a compact output;
+                    # restore collector identity so standalone files remain attributable.
+                    inject_profile_metadata(classified_path, profile)
                     classified_value = str(classified_path.relative_to(repo_root))
                 except subprocess.CalledProcessError as exc:
                     self._json_response(
@@ -145,6 +224,7 @@ def main() -> None:
                         {
                             "error": "classification_failed",
                             "snapshot_path": str(snapshot_path.relative_to(repo_root)),
+                            "profile_id": profile["profile_id"],
                             "returncode": exc.returncode,
                         },
                     )
@@ -164,6 +244,8 @@ def main() -> None:
                             ],
                             repo_root,
                         )
+                        inject_profile_metadata(profile_json, profile)
+                        annotate_profile_html(profile_html, profile)
                         profile_json_value = str(profile_json.relative_to(repo_root))
                         profile_html_value = str(profile_html.relative_to(repo_root))
                     except subprocess.CalledProcessError as exc:
@@ -171,6 +253,10 @@ def main() -> None:
 
             result = {
                 "ok": True,
+                "profile_id": profile["profile_id"],
+                "profile_short_id": profile["profile_short_id"],
+                "profile_label": profile["profile_label"],
+                "profile_folder": folder_name,
                 "item_count": len(items),
                 "snapshot_path": str(snapshot_path.relative_to(repo_root)),
                 "enrichment": enrichment_status,
@@ -179,6 +265,7 @@ def main() -> None:
                 "profile_html_path": profile_html_value,
             }
             print(
+                f"[{profile['profile_label']}:{profile['profile_short_id']}] "
                 f"Collected {len(items)} videos -> {result['snapshot_path']}"
                 + (f" -> {classified_value}" if classified_value else "")
                 + (f" -> {profile_html_value}" if profile_html_value else "")
@@ -189,7 +276,8 @@ def main() -> None:
             print(f"[bridge] {self.address_string()} - {format % values}")
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"YouTube Library Home Bridge v0.2: http://{args.host}:{args.port}")
+    print(f"YouTube Library Home Bridge v0.3: http://{args.host}:{args.port}")
+    print("Profile identity: extension-local stable ID + user label")
     print("Classifier: v2 context/entity + intent separation")
     if os.environ.get("YOUTUBE_API_KEY"):
         print("YouTube API enrichment: ENABLED")
