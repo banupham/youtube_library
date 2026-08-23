@@ -10,6 +10,9 @@ data/up_next_enriched/**/*.json
 data/up_next_classified/**/*.json
 data/profile_reports/**/*.json
 data/profile_reports/**/*.html
+data/profile_library/**/*.json
+data/profile_library/**/*.jsonl
+data/collection_sessions/**/*.json
 
 # Backward compatibility for flat files created by older versions.
 data/home_snapshots/*.json
@@ -20,6 +23,9 @@ data/up_next_enriched/*.json
 data/up_next_classified/*.json
 data/profile_reports/*.json
 data/profile_reports/*.html
+data/profile_library/*.json
+data/profile_library/*.jsonl
+data/collection_sessions/*.json
 
 # Keep directory placeholders tracked.
 !data/home_snapshots/.gitkeep
