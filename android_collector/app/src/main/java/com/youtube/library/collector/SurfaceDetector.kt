@@ -5,7 +5,7 @@ object SurfaceDetector {
 
     private val rules = listOf(
         Rule("watch", listOf("comments", "bình luận", "share", "chia sẻ", "save", "lưu", "autoplay", "tự động phát"), 0.16),
-        Rule("subscriptions", listOf("subscriptions", "kênh đăng ký", "đăng ký"), 0.34),
+        Rule("subscriptions", listOf("subscriptions", "kênh đăng ký"), 0.34),
         Rule("home", listOf("home", "trang chủ"), 0.34),
         Rule("shorts", listOf("shorts"), 0.42),
         Rule("search", listOf("search", "tìm kiếm"), 0.38)
