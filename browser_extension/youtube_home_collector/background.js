@@ -1,5 +1,5 @@
 const CENTRAL_BASE = 'http://127.0.0.1:8770';
-const COLLECTOR_VERSION = '0.6.2';
+const COLLECTOR_VERSION = '0.6.3';
 
 function createProfileId() {
   if (globalThis.crypto?.randomUUID) return `browser-${crypto.randomUUID()}`;
