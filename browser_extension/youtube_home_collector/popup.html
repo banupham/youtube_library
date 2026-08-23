@@ -5,98 +5,71 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>YouTube Recommendation Collector</title>
   <style>
-    body { font-family: Arial, sans-serif; width: 360px; margin: 14px; }
+    body { font-family: Arial, sans-serif; width: 360px; margin: 14px; color:#1f2937; }
     label { display: block; margin-top: 10px; font-size: 13px; }
     input { width: 100%; box-sizing: border-box; padding: 7px; margin-top: 4px; }
     input[type="checkbox"] { width: auto; margin-right: 7px; vertical-align: middle; }
-    button { width: 100%; margin-top: 14px; padding: 10px; cursor: pointer; }
+    button { width: 100%; margin-top: 12px; padding: 10px; cursor: pointer; border-radius:8px; border:1px solid #cbd5e1; background:#fff; }
     #status { margin-top: 12px; white-space: pre-wrap; font-size: 12px; line-height: 1.4; }
-    .hint { color: #555; font-size: 12px; line-height: 1.4; }
-    .profile-box { margin: 10px 0 4px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
-    .profile-id { margin-top: 5px; font-family: monospace; font-size: 11px; color: #666; word-break: break-all; }
-    .section { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ddd; }
+    .hint { color: #64748b; font-size: 12px; line-height: 1.4; }
+    .profile-box,.section { margin-top: 12px; padding: 11px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; }
+    .profile-id { margin-top: 5px; font-family: monospace; font-size: 11px; color: #64748b; word-break: break-all; }
     .checkline { display: flex; align-items: center; gap: 4px; }
-    .auto-box { padding: 10px; border: 1px solid #cfd8ea; background: #f5f8ff; border-radius: 8px; }
-    .auto-state { margin-top: 8px; font-size: 13px; font-weight: 600; }
-    .secondary-button { background: #fff; border: 1px solid #aab5ca; border-radius: 6px; }
+    .auto-state { margin-top: 8px; font-size: 13px; font-weight: 700; }
+    details { margin-top:12px; }
+    summary { cursor:pointer; font-weight:700; }
   </style>
 </head>
 <body>
-  <strong>YouTube Recommendation Collector</strong>
-  <p class="hint">Extension dành cho participant đã tham gia cộng đồng nghiên cứu. Passive collector tự hoạt động khi profile này truy cập YouTube. Collector không tự click/play/like/comment/subscribe.</p>
+  <strong>YouTube Community Collector</strong>
+  <p class="hint">Collector tự hoạt động khi profile này dùng YouTube. Một Central Server duy nhất: <b>127.0.0.1:8770</b>.</p>
 
   <div class="profile-box">
-    <label>
-      Tên profile nghiên cứu
-      <input id="profileLabel" type="text" maxlength="60" placeholder="Ví dụ: Profile A, Music test, New profile">
+    <label>Tên profile nghiên cứu
+      <input id="profileLabel" type="text" maxlength="60" placeholder="Ví dụ: Profile A">
     </label>
     <div class="profile-id">ID: <span id="profileId">đang tạo...</span></div>
-    <div class="hint">ID được lưu riêng trong browser profile hiện tại. Không dùng email/account ID làm định danh project.</div>
   </div>
 
-  <div class="section auto-box">
-    <strong>Passive natural-use collector</strong>
-    <p class="hint">Mặc định ON ngay khi extension được cài. Khi bạn tự mở YouTube, extension chỉ đọc Home/Up Next/Subscriptions trên những trang bạn tự truy cập. Không cần mở popup hoặc bật checkbox.</p>
-    <div id="passiveState" class="auto-state">Đang kiểm tra trạng thái...</div>
+  <div class="section">
+    <strong>Thu thập tự động</strong>
+    <div id="passiveState" class="auto-state">Đang kiểm tra...</div>
     <div id="passiveLastCapture" class="hint">Đang đọc lần capture gần nhất...</div>
-    <button id="passivePauseToggle" class="secondary-button" type="button">Tạm dừng thu thập</button>
-    <div class="hint">Home tối đa 2 snapshot/ngày · Up Next từ tối đa 8 watch pages tự mở/ngày · Subscriptions/Channels tối đa 1 snapshot/ngày.</div>
+    <button id="passivePauseToggle" type="button">Tạm dừng thu thập</button>
+    <div class="hint">Chỉ quan sát Home, Up Next và Subscriptions khi participant tự dùng YouTube. Không tự click/play/like/comment/subscribe.</div>
   </div>
 
-  <div class="section">
-    <strong>Manual fallback / test</strong>
-    <p class="hint">Chế độ này giữ pipeline cũ để debug/test hoặc bổ sung snapshot khi cần. Từ bản 0.6.2, cả passive và manual đều đi qua Central Server 127.0.0.1:8770.</p>
-  </div>
-
-  <label>
-    Số lần scroll Home
-    <input id="scrolls" type="number" min="0" max="50" value="8">
-  </label>
-
-  <label>
-    Delay mỗi scroll (ms)
-    <input id="delay" type="number" min="200" max="10000" value="1500">
-  </label>
-
-  <div class="section">
-    <strong>Subscriptions evidence</strong>
-    <p class="hint">Đọc read-only `/feed/subscriptions` và danh sách channel quan sát được từ `/feed/channels`. Đây là explicit-affinity evidence, không phải watch history.</p>
+  <details>
+    <summary>Manual test / debug</summary>
+    <label>Số lần scroll Home
+      <input id="scrolls" type="number" min="0" max="50" value="8">
+    </label>
+    <label>Delay mỗi scroll (ms)
+      <input id="delay" type="number" min="200" max="10000" value="1500">
+    </label>
     <label class="checkline">
       <input id="collectSubscriptions" type="checkbox" checked>
-      Thu thập Subscriptions trong phiên manual này
+      Thu thập Subscriptions
     </label>
-    <label>
-      Số video tối đa từ Subscriptions feed
+    <label>Số video tối đa từ Subscriptions
       <input id="subscriptionLimit" type="number" min="10" max="100" value="60">
     </label>
-  </div>
-
-  <div class="section">
-    <strong>Manual Up Next evidence</strong>
-    <div class="hint">Manual mode có thể request watch-page HTML từ vài Home seed để kiểm tra stability. Passive mode không làm việc này; nó chỉ ghi Up Next của watch page người dùng tự mở.</div>
-
-    <label>
-      Số video Home random để đọc Up Next
+    <label>Số Home seed đọc Up Next
       <input id="upNextSamples" type="number" min="0" max="10" value="3">
     </label>
-
-    <label>
-      Số lần replay Up Next mỗi video
+    <label>Số replay mỗi seed
       <input id="upNextReplays" type="number" min="1" max="10" value="3">
     </label>
-
-    <label>
-      Số gợi ý Up Next lấy mỗi replay
+    <label>Số Up Next mỗi replay
       <input id="upNextLimit" type="number" min="5" max="40" value="20">
     </label>
-  </div>
+    <button id="collect">Manual collect + mở kết quả</button>
+  </details>
 
-  <button id="collect">Manual collect + update Profile Library</button>
-  <div id="status">Central server cần chạy tại 127.0.0.1:8770.</div>
+  <div id="status">Central Server cần chạy tại 127.0.0.1:8770.</div>
 
   <script src="subscriptions.js"></script>
   <script src="popup.js"></script>
-  <script src="central_compat.js"></script>
   <script src="popup_passive.js"></script>
 </body>
 </html>
