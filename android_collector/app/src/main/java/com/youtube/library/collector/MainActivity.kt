@@ -7,6 +7,9 @@ import android.provider.Settings
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import java.io.File
+import java.time.LocalDate
 
 class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,17 +61,57 @@ class MainActivity : Activity() {
             }
         }
 
+        val exportButton = Button(this).apply {
+            text = "Xuất snapshot JSONL hôm nay"
+            setOnClickListener {
+                val source = todaySnapshotFile()
+                if (!source.exists() || source.length() == 0L) {
+                    Toast.makeText(this@MainActivity, "Hôm nay chưa có snapshot để xuất.", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "application/x-ndjson"
+                    putExtra(Intent.EXTRA_TITLE, "youtube_accessibility_${LocalDate.now()}.jsonl")
+                }
+                startActivityForResult(intent, REQUEST_EXPORT)
+            }
+        }
+
         root.addView(title)
         root.addView(disclosure)
         root.addView(status)
         root.addView(enableButton)
         root.addView(pauseButton)
+        root.addView(exportButton)
         setContentView(root)
     }
+
+    @Deprecated("Legacy Activity result API is sufficient for the dependency-free prototype")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_EXPORT || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        val source = todaySnapshotFile()
+        try {
+            contentResolver.openOutputStream(uri, "w")?.use { output ->
+                source.inputStream().use { input -> input.copyTo(output) }
+            } ?: error("Không mở được file đích")
+            Toast.makeText(this, "Đã xuất snapshot JSONL.", Toast.LENGTH_SHORT).show()
+        } catch (error: Exception) {
+            Toast.makeText(this, "Xuất snapshot lỗi: ${error.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun todaySnapshotFile(): File = File(
+        File(filesDir, "youtube_accessibility_snapshots"),
+        "${LocalDate.now()}.jsonl"
+    )
 
     companion object {
         const val PREFS = "collector_settings"
         const val KEY_DISCLOSURE_ACCEPTED = "disclosure_accepted"
         const val KEY_PAUSED = "collector_paused"
+        private const val REQUEST_EXPORT = 7001
     }
 }
