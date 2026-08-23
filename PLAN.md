@@ -1,21 +1,21 @@
 # /plan — YouTube Library canonical checkpoint
 
-> Cập nhật: 2026-08-23
+> Cập nhật: 2026-08-24
 >
-> Kiến trúc vận hành ưu tiên tối giản: **2 phía, 1 central process, 1 external port**.
+> Kiến trúc vận hành: **2 phía, 1 central process, 1 external port**.
 
 # 1. Product goal
 
-YouTube Library thu recommendation/affinity evidence thật từ participant tự nguyện trên Chrome/Android, tạo profile theo thời gian, rồi tổng hợp thành Creator Community Intelligence.
+YouTube Library thu recommendation/affinity evidence thật và natural interaction evidence từ participant tự nguyện trên Chrome/Android, tạo profile theo thời gian, rồi tổng hợp thành Creator Community Intelligence.
 
-Creator cuối cùng cần thấy:
+Creator output giữ nguyên:
 
 ```text
 Participants / Profiles / Usable profiles
 Top content opportunities
 Participant/profile coverage
 Core keywords / tags
-Expansion keys đang rising/emerging/revived
+Expansion keys rising/emerging/revived
 Top intent / format
 Recommended Anchor
 Recommended Bridge
@@ -33,59 +33,111 @@ Chrome + Android
       ↓
 CENTRAL SERVER :8770
       ↓
-ingest → normalize → enrich → classify
-→ temporal profile → participant-balanced aggregate
+recommendation ingest + interaction ingest
+→ enrich → classify → temporal profile
+→ participant-balanced aggregate
       ↓
 CREATOR DASHBOARD
 ```
 
-## Participant side
+# 3. Participant side
 
-### Chrome
+## Chrome `0.7.0`
+
+Path:
 
 ```text
 browser_extension/youtube_home_collector/
 ```
 
-Current version: `0.6.3`.
-
-Passive collector auto-on khi participant truy cập YouTube và chỉ quan sát natural navigation:
+Passive auto collection:
 
 ```text
-Home
+Home visible videos
 Watch-page Up Next
 Subscriptions / Channels
+video_open
+like / unlike
+dislike / undislike
+comment_submit
 ```
 
-Không auto-click/play/like/comment/subscribe.
+Chrome popup now contains:
 
-Chrome gửi trực tiếp vào central server `127.0.0.1:8770`.
+```text
+Server URL
+Project token
+Participant ID
+```
 
-### Android
+The same real participant should reuse the same Participant ID across their profiles/devices.
+
+Chrome computes v1 interaction score before sending:
+
+```text
+video_open       +0.25
+like             +1.00
+unlike           -1.00
+dislike          -1.00
+undislike         0.00
+comment_submit   +1.00
+```
+
+Score model:
+
+```text
+natural_interaction_v1
+```
+
+Comment content / typed text is not collected.
+
+Subscription status:
+
+```text
+subscribed
+not_subscribed
+unknown
+```
+
+For the opened watch video Chrome can read Subscribe/Subscribed state directly. For recommendation cards, `subscribed` may be inferred from an observed subscribed-channel cache; absence without complete evidence remains `unknown`.
+
+## Android `0.3.0`
+
+Path:
 
 ```text
 android_collector/
 ```
 
-Current source version: `0.2.0`.
-
-AccessibilityService chỉ giới hạn package:
+AccessibilityService is restricted to:
 
 ```text
 com.google.android.youtube
 ```
 
-App có Server URL / Project token / Participant ID / Profile slot / Auto sync. Snapshot được lưu local trước, queue nếu lỗi mạng rồi retry tới:
+Observed event types:
+
+```text
+TYPE_WINDOW_STATE_CHANGED
+TYPE_WINDOW_CONTENT_CHANGED
+TYPE_VIEW_SCROLLED
+TYPE_VIEW_CLICKED
+```
+
+Android queues and auto-syncs:
 
 ```text
 POST /v1/android/snapshot
+POST /v1/interaction
 ```
 
-ADB/CMD chỉ còn debug/fixture fallback.
+No `performAction()`, `dispatchGesture()`, player control or input injection.
 
-# 3. Single central runtime
+Android interaction metadata is intentionally conservative until real node fixtures exist. video/channel/subscription fields can remain null/unknown.
 
-Chỉ chạy:
+# 4. Single central runtime
+
+Only run:
 
 ```bat
 python scripts\community\community_server.py
@@ -97,163 +149,164 @@ Default:
 http://127.0.0.1:8770
 ```
 
-Không còn `scripts/homepage/home_bridge.py`.
-Không còn server phụ `8765`.
-Không spawn/proxy một HTTP process khác.
+No `home_bridge.py`. No `8765`. No second HTTP process.
 
-Chrome analysis logic nằm trong:
+Central modules:
 
 ```text
+scripts/community/community_server.py
 scripts/community/browser_pipeline.py
-```
-
-Central server gọi trực tiếp:
-
-```text
-BrowserPipeline.collect()
-BrowserPipeline.finalize()
+scripts/community/interaction_store.py
+scripts/community/build_community_report.py
 ```
 
 Endpoints:
 
 ```text
 GET  /                    Creator Dashboard
-GET  /dashboard            Creator Dashboard alias
-GET  /profile/<id>         Browser profile HTML
+GET  /dashboard            Dashboard alias
+GET  /profile/<id>         Browser profile HTML + interaction summary
 GET  /health               JSON status
-POST /collect              Chrome raw surface
+POST /collect              Chrome recommendation surface
 POST /finalize             Chrome temporal profile update
-POST /v1/android/snapshot  Android raw ingest
+POST /v1/android/snapshot  Android raw Accessibility ingest
+POST /v1/interaction       Natural interaction ingest
 POST /v1/profile           Sanitized analyzed profile
 ```
 
-# 4. Central analysis pipeline
+# 5. Interaction data contract
+
+Schema:
 
 ```text
-raw browser/android evidence
-        ↓
-platform normalization
-        ↓
-YouTube metadata enrichment
-        ↓
-content + intent classification
-        ↓
-per-profile daily evidence
-        ↓
-Today / 7d / 30d / Long-term
-        ↓
-baseline / emerging / rising / stable / cooling / dormant / revived
-        ↓
-longitudinal profile
-        ↓
-participant-balanced community aggregation
-        ↓
-creator opportunity report
+schemas/interaction_event.v1.schema.json
 ```
 
-Existing modules:
+Central stores machine data:
 
 ```text
-scripts/community/browser_pipeline.py
-scripts/community/community_server.py
-scripts/community/build_community_report.py
-scripts/classification/
-scripts/enrichment/
-scripts/profile/
-taxonomy/
-schemas/
+data/interaction_events/.../YYYY-MM-DD.jsonl
+data/interaction_daily/.../YYYY-MM-DD.json
+data/interaction_daily/.../rolling_7d.json
+data/interaction_daily/.../rolling_30d.json
 ```
 
-# 5. Participant balancing
+Raw interaction event is ground evidence. Score is a project heuristic and remains recalibratable.
 
-Một participant có thể có nhiều profiles/devices nhưng vẫn chỉ có một tổng community weight.
+Natural interaction summaries are attached to the longitudinal profile and shown in `/profile/<id>`, but **do not yet change Creator Opportunity ranking**.
+
+# 6. Profile/community analysis
+
+Recommendation evidence continues through:
 
 ```text
-Participant A
-├── Browser A1
-├── Browser A2
-└── Android A3
-
-Participant B
-└── Browser B1
+raw Home / Up Next / Subscriptions
+→ YouTube metadata enrichment
+→ content + intent classification
+→ Today / 7d / 30d / Long-term
+→ baseline / emerging / rising / stable / cooling / dormant / revived
+→ longitudinal profile
+→ participant-balanced community aggregate
+→ Creator Dashboard
 ```
 
-Không coi ví dụ trên là 4 independent humans.
+One participant with multiple profiles/devices still has one total community weight.
 
-# 6. Human-facing UI
+# 7. Android APK build
 
-Creator mở:
+Previous APK pipeline was not confirmed successful. Build configuration has now been simplified to:
+
+```text
+JDK 17
+Gradle 8.9
+Android SDK 35
+AGP 8.7.3
+Kotlin 1.9.25
+```
+
+App version:
+
+```text
+0.3.0
+```
+
+Workflow:
+
+```text
+.github/workflows/android-apk.yml
+```
+
+Command:
+
+```text
+gradle -p android_collector --no-daemon --stacktrace --warning-mode all clean :app:assembleDebug
+```
+
+APK is not considered ready until GitHub produces artifact:
+
+```text
+youtube-library-collector-debug
+```
+
+# 8. Data policy
+
+`data/` is runtime-only. Git keeps only `data/README.md`.
+
+Human-facing:
 
 ```text
 http://127.0.0.1:8770/
-```
-
-Manual Chrome collection sau finalize tự mở:
-
-```text
 http://127.0.0.1:8770/profile/<id>
 ```
 
-Raw/intermediate/profile JSON là machine data. Creator không cần đọc chúng.
+Raw/intermediate JSON/JSONL is for code, audit and debugging.
 
-Primary report runtime:
-
-```text
-data/community_reports/current.html
-```
-
-Machine/API representation:
+# 9. Current status
 
 ```text
-data/community_reports/current.json
+Chrome passive recommendation collector      IMPLEMENTED 0.7.0
+Chrome natural interaction collector         IMPLEMENTED v1
+Chrome configurable central server           IMPLEMENTED
+Chrome local daily interaction score         IMPLEMENTED
+
+Central single process :8770                 IMPLEMENTED v2.1
+Central interaction endpoint                 IMPLEMENTED
+Daily / rolling 7d/30d interaction JSON      IMPLEMENTED
+Interaction → Creator Opportunity weight     NOT ENABLED
+
+Android Accessibility source                 IMPLEMENTED 0.3.0
+Android snapshot auto-sync                   IMPLEMENTED
+Android natural click event auto-sync        IMPLEMENTED, NEEDS REAL FIXTURE VALIDATION
+Android APK workflow                         REVISED, ARTIFACT MUST BE VERIFIED
+Android node → normalized video parser       PENDING REAL FIXTURES
+Android exact subscription-state parser      PENDING REAL FIXTURES
+
+Participant-balanced aggregator              IMPLEMENTED
+Creator dashboard                            IMPLEMENTED initial UI
+Synthetic Viewer Robot                       SANDBOX ONLY
 ```
 
-# 7. Data policy
-
-`data/` là runtime-only workspace. Git chỉ giữ `data/README.md`; code tự tạo folders khi cần.
-
-# 8. Current status
+# 10. Immediate sequence
 
 ```text
-Chrome passive collector                    IMPLEMENTED 0.6.3
-Chrome single-central transport :8770       IMPLEMENTED
-Chrome in-process BrowserPipeline           IMPLEMENTED
-Legacy home_bridge.py                       REMOVED
-
-Android Accessibility collector source      IMPLEMENTED 0.2.0
-Android auto sync                           IMPLEMENTED
-Android raw central ingest                  IMPLEMENTED
-Android APK build                           CURRENT ISSUE — FIX/VERIFY CI
-Android node → normalized video parser      PENDING REAL FIXTURES
-Android longitudinal profile                PENDING PARSER
-
-Central server single process               IMPLEMENTED v2.0
-Participant-balanced aggregator             IMPLEMENTED
-Creator dashboard served at /               IMPLEMENTED initial UI
-Synthetic Viewer Robot                      SANDBOX ONLY
+1. Verify Android Actions assembleDebug and download the APK artifact.
+2. Install Android 0.3.0 and receive real auto-synced node + click fixtures.
+3. Build fixture-tested Android node → Home/Watch/Subscriptions/video parser.
+4. Add reliable Android video/channel/subscription state to interaction events.
+5. Observe several days of interaction evidence and validate false-positive rate.
+6. Only after validation decide how interaction scores should influence longitudinal interests/community opportunities.
 ```
 
-# 9. Immediate next engineering sequence
+# 11. Safety / interpretation boundary
 
-```text
-1. Fix Android GitHub Actions APK build until artifact is green.
-2. Install Android build and collect real auto-synced node fixtures.
-3. Build fixture-tested Android node → normalized Home/Watch/Subscriptions parser.
-4. Feed normalized Android evidence into the same profile/community pipeline.
-5. Improve Creator Dashboard UI while keeping raw/intermediate data hidden.
-6. Add central retention/cleanup policy for raw/intermediate runtime data.
-```
-
-# 10. Safety / interpretation boundary
-
-- Collectors measure natural participant use; they do not create traffic/engagement.
-- Chrome/Android do not auto-click/play/like/comment/subscribe.
-- Android Accessibility is restricted to YouTube package.
-- Community identity does not need Google email/password/cookie.
+- Collectors observe participant actions; they never create engagement.
+- Comment text/content is never collected; only `comment_submit` event.
+- Android Accessibility stays restricted to YouTube package.
 - Multiple profiles from one participant do not count as independent humans.
+- Interaction score is a transparent project heuristic, not YouTube ranking truth.
+- Interaction score does not currently rewrite Creator Opportunity ranking.
 - Synthetic viewer is not ground truth.
-- Community coverage/opportunity is panel evidence, not YouTube internal probability.
 
-# 11. Continuation prompt
+# 12. Continuation prompt
 
-> Đọc `README.md` và `PLAN.md`. Runtime đã được rút còn một `community_server.py` trên port 8770; `home_bridge.py` đã xóa và Chrome profile logic nằm trong `browser_pipeline.py`. Creator dashboard ở `/`, profile report ở `/profile/<id>`. Tiếp tục ưu tiên fix Android APK build và Android parser.
+> Đọc `README.md` và `PLAN.md`. Chrome 0.7.0 và Android 0.3.0 now send recommendation/interaction evidence to the single Central Server :8770. InteractionStore writes daily + rolling 7d/30d JSON and does not store comment text. Next priority: verify Android APK artifact, then validate real Android Accessibility fixtures before building the strict node parser.
