@@ -1,20 +1,29 @@
 {
   "manifest_version": 3,
   "name": "YouTube Library Recommendation Collector",
-  "version": "0.5.0",
-  "description": "Read-only collector for YouTube Home, repeated video-only Up Next, and Subscriptions evidence, consolidated into one longitudinal profile-library report. It never clicks, plays, or changes subscriptions.",
+  "version": "0.6.0",
+  "description": "Read-only collector for passive natural-use Home, Up Next and Subscriptions evidence plus manual fallback. It never clicks, plays, or changes subscriptions.",
   "permissions": [
     "activeTab",
     "scripting",
-    "downloads",
     "storage"
   ],
   "host_permissions": [
     "https://www.youtube.com/*",
     "http://127.0.0.1:8765/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["passive_collector.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
-    "default_title": "Collect daily evidence and update YouTube profile library",
+    "default_title": "YouTube Library passive collector / manual fallback",
     "default_popup": "popup.html"
   }
 }
