@@ -1,6 +1,6 @@
 # YouTube Library
 
-YouTube Library là hệ thống **community profile intelligence** cho creator. Dự án thu recommendation/affinity evidence từ những người tham gia tự nguyện trên Chrome và Android, phân tích thành longitudinal profiles, rồi tổng hợp theo participant để trả ra content opportunities cho người sáng tạo.
+YouTube Library là hệ thống **community profile intelligence** cho creator. Dự án thu recommendation/affinity evidence và một số natural interaction events từ participant tự nguyện trên Chrome/Android, tạo longitudinal profiles, rồi tổng hợp theo participant thành content opportunities cho người sáng tạo.
 
 ## Kiến trúc gọn: 2 phía
 
@@ -8,7 +8,7 @@ YouTube Library là hệ thống **community profile intelligence** cho creator.
 PARTICIPANT SIDE
 Chrome Extension + Android App
         ↓
-read-only natural-use evidence
+natural-use evidence
         ↓
 CENTRAL SERVER :8770
 collect / ingest
@@ -19,53 +19,118 @@ collect / ingest
 CREATOR DASHBOARD
 ```
 
-### Phía người tham gia
+Collector chỉ quan sát hành vi người dùng thật; không tự click/play/like/comment/subscribe.
 
-Chrome extension tự quan sát Home, natural Watch-page Up Next và Subscriptions khi participant dùng YouTube. Android app dùng AccessibilityService giới hạn vào `com.google.android.youtube` và tự upload snapshot theo cấu hình.
+## Participant collectors
 
-Collector không auto-click/play/like/comment/subscribe.
+### Chrome `0.7.0`
 
-### Trung tâm phân tích
+Passive collector tự hoạt động khi participant dùng YouTube:
 
-Chỉ chạy **một process, một port**:
+```text
+Home → visible recommendation cards
+Watch → video_open + Up Next
+Subscriptions / Channels
+Like / unlike / dislike
+Comment submission event
+```
+
+Comment chỉ ghi **sự kiện đã gửi comment**, không ghi nội dung comment hay text người dùng gõ.
+
+Chrome có Server URL / Project token / Participant ID trong popup và gửi trực tiếp tới Central Server. Browser tính `natural_interaction_v1` score trước khi gửi.
+
+### Android `0.3.0`
+
+Android dùng AccessibilityService giới hạn vào:
+
+```text
+com.google.android.youtube
+```
+
+App quan sát bounded node tree và natural Accessibility events, tự queue/upload snapshot + interaction evidence theo Server URL / token / Participant ID / Profile slot.
+
+Android chưa có fixture-tested video-card parser, nên video/channel/subscription metadata từ interaction có thể còn `unknown` cho tới khi parser được xác thực.
+
+## Một Central Server
+
+Chỉ chạy:
 
 ```bat
 python scripts\community\community_server.py
 ```
 
-Mặc định:
+Default:
 
 ```text
 http://127.0.0.1:8770
 ```
 
-Các endpoint chính:
+Endpoints:
 
 ```text
 GET  /                    Creator Dashboard
 GET  /profile/<id>         Browser profile report
 GET  /health               Server status
-POST /collect              Chrome surface evidence
-POST /finalize             Build/update Chrome longitudinal profile
-POST /v1/android/snapshot  Android raw evidence
-POST /v1/profile           Sanitized analyzed profile for community aggregate
+POST /collect              Chrome recommendation evidence
+POST /finalize             Chrome longitudinal profile update
+POST /v1/android/snapshot  Android raw Accessibility evidence
+POST /v1/interaction       Natural interaction evidence
+POST /v1/profile           Sanitized analyzed community profile
 ```
 
 Không còn `home_bridge.py`, không còn server phụ `8765`.
 
-Logic Chrome chạy trực tiếp trong:
+Chrome analysis logic:
 
 ```text
 scripts/community/browser_pipeline.py
 ```
 
-Central server:
+Interaction storage/rollups:
 
 ```text
-scripts/community/community_server.py
+scripts/community/interaction_store.py
 ```
 
-## Giao diện kết quả
+## Natural interaction evidence v1
+
+```text
+video_open       +0.25
+like             +1.00
+unlike           -1.00
+dislike          -1.00
+undislike         0.00
+comment_submit   +1.00
+```
+
+Score model:
+
+```text
+natural_interaction_v1
+```
+
+Server lưu raw event theo ngày và tạo machine summaries:
+
+```text
+YYYY-MM-DD.jsonl
+YYYY-MM-DD.json
+rolling_7d.json
+rolling_30d.json
+```
+
+Natural interaction là **lớp evidence riêng**. Hiện nó được hiển thị ở profile report nhưng chưa thay đổi Creator Opportunity ranking; cần dữ liệu thật và calibration trước khi đưa vào trọng số chiến lược.
+
+Subscription status được giữ theo ba trạng thái:
+
+```text
+subscribed
+not_subscribed
+unknown
+```
+
+Chrome watch page có thể đọc trực tiếp nút Subscribe/Subscribed cho video đang mở. Up Next chỉ đánh dấu `subscribed` khi có evidence từ danh sách channel đã quan sát; nếu không đủ bằng chứng thì giữ `unknown`, không suy diễn thành non-subscribed.
+
+## Creator output
 
 Mở:
 
@@ -73,17 +138,7 @@ Mở:
 http://127.0.0.1:8770/
 ```
 
-để xem Creator Community Dashboard.
-
-Manual collect trên Chrome sẽ tự mở:
-
-```text
-http://127.0.0.1:8770/profile/<profile-id>
-```
-
-để xem profile report trên trình duyệt.
-
-Creator Dashboard cần trả:
+Creator Dashboard giữ contract xuyên suốt:
 
 ```text
 Participants / Profiles / Usable profiles
@@ -94,36 +149,37 @@ Core tags
 Expansion keywords
 Top intent / format
 Trend breadth: rising / stable / cooling
-Recommended anchor
-Recommended bridge
-Controlled expansion
+Recommended Anchor
+Recommended Bridge
+Controlled Expansion
 Certainty / limitations
 ```
 
-Các score là heuristic trên observed community panel, không phải xác suất YouTube recommendation/view.
+Các score/coverage là heuristic trên observed community panel, không phải xác suất YouTube recommendation/view.
 
 ## Data policy
 
-`data/` là runtime workspace. Raw/intermediate/profile JSON chủ yếu để **code đọc**, không phải người dùng đọc. Git chỉ giữ `data/README.md`; code tự tạo runtime directories khi cần.
+`data/` là runtime workspace. Raw/intermediate/profile JSON chủ yếu để code đọc; Git chỉ giữ `data/README.md`.
 
-Human-facing output ưu tiên dashboard HTML. JSON dùng cho code/API/debug.
+Human-facing output ưu tiên dashboard/profile HTML. Raw JSON, Accessibility nodes và event JSONL không phải giao diện người dùng.
 
-## Trạng thái hiện tại
+## Current status
 
 ```text
-Chrome passive collector              implemented 0.6.3
-Chrome → single central :8770         implemented
-Chrome in-process profile pipeline    implemented
-Android Accessibility collector       source 0.2.0 implemented
-Android APK build                     cần tiếp tục fix/verify GitHub Actions
-Android raw central ingest            implemented
-Android node → normalized parser      pending real fixtures
-Participant-balanced aggregator       implemented
-Creator Dashboard                     initial HTML/JSON implemented + served at /
-Synthetic Viewer Robot                sandbox only
+Chrome passive + interactions          implemented 0.7.0
+Chrome configurable central sync       implemented
+Central single process :8770           implemented 2.1
+Daily / rolling 7d/30d interactions    implemented
+Android collector source               implemented 0.3.0
+Android snapshot + event auto sync      implemented
+Android APK build                       source/workflow fixed; artifact still must be verified
+Android node → normalized parser        pending real fixtures
+Participant-balanced aggregator         implemented
+Creator Dashboard                       implemented initial UI
+Synthetic Viewer Robot                  sandbox only
 ```
 
-## Nguyên tắc xuyên suốt
+## Principle
 
 ```text
 REAL PARTICIPANT EVIDENCE
@@ -137,6 +193,6 @@ CREATOR DECISION
 ORGANIC PUBLICATION + REAL AUDIENCE
 ```
 
-Collector không tạo engagement. Synthetic data không rewrite observed truth. Creator output là community-support/audience-fit evidence, không phải lời hứa về view.
+Synthetic data không rewrite observed truth. Natural interaction evidence không được tự động biến thành YouTube ranking probability.
 
 `PLAN.md` là checkpoint kỹ thuật hiện tại. `PROJECT_PLAN.md` giữ roadmap gốc/lịch sử thiết kế.
