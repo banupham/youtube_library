@@ -4,10 +4,10 @@
 Pipeline:
 browser Home snapshot
   -> stable browser-profile identity
-  -> save raw snapshot in that profile's folder
+  -> save raw snapshot in that profile's data folder
   -> optional YouTube Data API enrichment when YOUTUBE_API_KEY is set
   -> v2 context/entity classifier
-  -> recommendation-exposure profile JSON + HTML report
+  -> profile-intelligence JSON + HTML pair in data/profile_reports
 
 Usage:
     python scripts/homepage/home_bridge.py
@@ -26,7 +26,6 @@ import os
 import re
 import subprocess
 import sys
-import unicodedata
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -68,7 +67,7 @@ def normalize_profile(raw: object) -> dict:
 
 
 def profile_folder(profile: dict) -> str:
-    # Folder identity is ID-based so renaming a label does not split history.
+    # Raw/enriched/classified history remains partitioned by stable browser-profile ID.
     return f"profile_{profile['profile_short_id']}"
 
 
@@ -106,6 +105,149 @@ def annotate_profile_html(path: Path, profile: dict) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def fallback_profile_html(json_path: Path, html_path: Path, profile: dict) -> None:
+    """Render a compact HTML report if the richer renderer fails after JSON exists."""
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    interests = payload.get("predicted_interest_weights") or []
+    directions = payload.get("content_directions") or []
+    keywords = payload.get("keyword_map") or []
+    tags = payload.get("creator_tag_map") or []
+    quality = payload.get("evidence_quality") or {}
+
+    def pct(value: object) -> float:
+        try:
+            return float(value) * 100.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    bars = []
+    for row in interests[:12]:
+        label = html_lib.escape(str(row.get("name_vi") or row.get("id") or "Unknown"))
+        share = pct(row.get("predicted_weight"))
+        zone = html_lib.escape(str(row.get("zone") or ""))
+        bars.append(
+            '<div class="row">'
+            f'<div><strong>{label}</strong><span>{zone}</span><b>{share:.1f}%</b></div>'
+            f'<div class="track"><i style="width:{max(1.0, share):.2f}%"></i></div>'
+            '</div>'
+        )
+
+    cards = []
+    for row in directions[:8]:
+        kws = ", ".join(html_lib.escape(str(x.get("value") or "")) for x in (row.get("keywords") or [])[:6])
+        observed_tags = ", ".join(html_lib.escape(str(x.get("value") or "")) for x in (row.get("suggested_tags") or [])[:6])
+        cards.append(
+            '<article>'
+            f'<small>{html_lib.escape(str(row.get("zone") or ""))} · predicted {pct(row.get("predicted_weight")):.1f}%</small>'
+            f'<h3>{html_lib.escape(str(row.get("direction") or row.get("id") or "Direction"))}</h3>'
+            f'<p>Opportunity <strong>{float(row.get("opportunity_score") or 0.0):.2f}</strong></p>'
+            f'<p><b>Keywords:</b> {kws or "—"}</p>'
+            f'<p><b>Observed tags:</b> {observed_tags or "—"}</p>'
+            '</article>'
+        )
+
+    keyword_chips = "".join(
+        f'<span class="chip">{html_lib.escape(str(row.get("value") or ""))}</span>' for row in keywords[:28]
+    )
+    tag_chips = "".join(
+        f'<span class="chip">{html_lib.escape(str(row.get("value") or ""))}</span>' for row in tags[:28]
+    )
+
+    archetype = html_lib.escape(str(payload.get("archetype") or "Recommendation profile"))
+    profile_label = html_lib.escape(profile["profile_label"])
+    short_id = html_lib.escape(profile["profile_short_id"])
+    certainty = pct(quality.get("certainty_score"))
+    uncertainty = pct(quality.get("uncertainty_score"))
+
+    rendered = f"""<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YouTube Profile Intelligence</title>
+<style>
+body{{margin:0;background:#101114;color:#f4f5f7;font-family:Inter,system-ui,sans-serif}}main{{max-width:1100px;margin:auto;padding:26px 18px 50px}}
+.hero,.panel,article{{background:#17191e;border:1px solid #30333a;border-radius:16px}}.hero,.panel{{padding:20px;margin-bottom:16px}}h1,h2,h3{{margin:.25em 0 .6em}}
+.muted,small{{color:#aeb3bd}}.stats,.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}}.stat,article{{padding:14px;background:#20232a}}
+.row{{margin:13px 0}}.row>div:first-child{{display:flex;gap:10px;align-items:center}}.row span{{color:#aeb3bd;font-size:.8rem}}.row b{{margin-left:auto}}
+.track{{height:10px;background:#2a2e36;border-radius:999px;overflow:hidden;margin-top:5px}}.track i{{display:block;height:100%;background:#9daeff;border-radius:999px}}
+.chip{{display:inline-block;padding:7px 10px;margin:4px;background:#242832;border-radius:999px;font-size:.86rem}}p{{line-height:1.5}}
+</style></head><body><main>
+<section class="hero"><div class="muted">Browser profile: <strong>{profile_label}</strong> · {short_id}</div><h1>{archetype}</h1>
+<div class="stats"><div class="stat">Certainty<br><strong>{certainty:.1f}%</strong></div><div class="stat">Uncertainty<br><strong>{uncertainty:.1f}%</strong></div><div class="stat">Video<br><strong>{int(payload.get("video_count") or 0)}</strong></div></div></section>
+<section class="panel"><h2>Trọng số dự đoán</h2>{''.join(bars) or '<p class="muted">Chưa đủ dữ liệu.</p>'}</section>
+<section class="panel"><h2>Hướng nội dung nên thử</h2><div class="cards">{''.join(cards) or '<p class="muted">Chưa đủ dữ liệu.</p>'}</div></section>
+<section class="panel"><h2>Keyword map</h2>{keyword_chips or '<span class="muted">Chưa đủ dữ liệu.</span>'}</section>
+<section class="panel"><h2>Creator tags</h2>{tag_chips or '<span class="muted">Chưa đủ dữ liệu.</span>'}</section>
+</main></body></html>"""
+    html_path.write_text(rendered, encoding="utf-8")
+
+
+def cleanup_paths(*paths: Path) -> None:
+    for path in paths:
+        try:
+            if path.exists():
+                path.unlink()
+        except OSError:
+            pass
+
+
+def build_profile_pair(
+    *,
+    profile_builder: Path,
+    classified_path: Path,
+    final_json: Path,
+    final_html: Path,
+    profile: dict,
+    repo_root: Path,
+) -> str:
+    """Create JSON+HTML as one logical report pair; never leave JSON-only output."""
+    temp_json = final_json.with_name(f".{final_json.name}.tmp")
+    temp_html = final_html.with_name(f".{final_html.name}.tmp")
+    cleanup_paths(temp_json, temp_html)
+
+    renderer_status = "ok"
+    command_failed = False
+    try:
+        run_command(
+            [
+                sys.executable,
+                str(profile_builder),
+                str(classified_path),
+                "--json-output",
+                str(temp_json),
+                "--html-output",
+                str(temp_html),
+            ],
+            repo_root,
+        )
+    except subprocess.CalledProcessError:
+        command_failed = True
+
+    # A renderer may fail after successfully writing the JSON. In that case,
+    # preserve the analysis and generate a compact visual fallback from it.
+    if temp_json.exists() and (not temp_html.exists() or temp_html.stat().st_size == 0):
+        fallback_profile_html(temp_json, temp_html, profile)
+        renderer_status = "fallback_html"
+
+    if command_failed and not temp_json.exists():
+        cleanup_paths(temp_json, temp_html)
+        raise RuntimeError("profile builder failed before producing profile JSON")
+
+    if not temp_json.exists() or temp_json.stat().st_size == 0:
+        cleanup_paths(temp_json, temp_html)
+        raise RuntimeError("profile report JSON was not created")
+    if not temp_html.exists() or temp_html.stat().st_size == 0:
+        cleanup_paths(temp_json, temp_html)
+        raise RuntimeError("profile report HTML was not created")
+
+    inject_profile_metadata(temp_json, profile)
+    annotate_profile_html(temp_html, profile)
+
+    final_json.parent.mkdir(parents=True, exist_ok=True)
+    cleanup_paths(final_json, final_html)
+    temp_json.replace(final_json)
+    temp_html.replace(final_html)
+    return renderer_status
+
+
 def main() -> None:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[2]
@@ -123,7 +265,7 @@ def main() -> None:
         folder.mkdir(parents=True, exist_ok=True)
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "YouTubeLibraryBridge/0.3"
+        server_version = "YouTubeLibraryBridge/0.4"
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -168,23 +310,23 @@ def main() -> None:
             snapshot_dir = snapshot_root / folder_name
             enriched_dir = enriched_root / folder_name
             classified_dir = classified_root / folder_name
-            profile_dir = profile_root / folder_name
-            for folder in (snapshot_dir, enriched_dir, classified_dir, profile_dir):
+            for folder in (snapshot_dir, enriched_dir, classified_dir):
                 folder.mkdir(parents=True, exist_ok=True)
 
-            # Keep a small local profile manifest so folders remain understandable.
-            profile_manifest = profile_root / folder_name / "profile_identity.json"
+            # One manifest per profile, also kept in the default reports folder.
+            profile_manifest = profile_root / f"profile_{profile['profile_short_id']}.identity.json"
             write_json(profile_manifest, profile)
 
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")[:-3]
             filename = f"home_{timestamp}.json"
             stem = Path(filename).stem
+            report_stem = f"profile_{profile['profile_short_id']}__{stem}"
 
             snapshot_path = snapshot_dir / filename
             enriched_path = enriched_dir / filename
             classified_path = classified_dir / filename
-            profile_json = profile_dir / f"{stem}.profile.json"
-            profile_html = profile_dir / f"{stem}.profile.html"
+            profile_json = profile_root / f"{report_stem}.profile.json"
+            profile_html = profile_root / f"{report_stem}.profile.html"
 
             write_json(snapshot_path, payload)
 
@@ -207,6 +349,7 @@ def main() -> None:
             classified_value = None
             profile_json_value = None
             profile_html_value = None
+            profile_report_status = "skipped"
 
             if not args.no_classify:
                 try:
@@ -214,8 +357,6 @@ def main() -> None:
                         [sys.executable, str(classifier), str(classification_input), "--output", str(classified_path)],
                         repo_root,
                     )
-                    # classify_homepage_v2 intentionally creates a compact output;
-                    # restore collector identity so standalone files remain attributable.
                     inject_profile_metadata(classified_path, profile)
                     classified_value = str(classified_path.relative_to(repo_root))
                 except subprocess.CalledProcessError as exc:
@@ -232,24 +373,19 @@ def main() -> None:
 
                 if not args.no_profile:
                     try:
-                        run_command(
-                            [
-                                sys.executable,
-                                str(profile_builder),
-                                str(classified_path),
-                                "--json-output",
-                                str(profile_json),
-                                "--html-output",
-                                str(profile_html),
-                            ],
-                            repo_root,
+                        profile_report_status = build_profile_pair(
+                            profile_builder=profile_builder,
+                            classified_path=classified_path,
+                            final_json=profile_json,
+                            final_html=profile_html,
+                            profile=profile,
+                            repo_root=repo_root,
                         )
-                        inject_profile_metadata(profile_json, profile)
-                        annotate_profile_html(profile_html, profile)
                         profile_json_value = str(profile_json.relative_to(repo_root))
                         profile_html_value = str(profile_html.relative_to(repo_root))
-                    except subprocess.CalledProcessError as exc:
-                        print(f"Warning: profile report failed ({exc.returncode}).")
+                    except Exception as exc:
+                        profile_report_status = f"failed:{type(exc).__name__}"
+                        print(f"Warning: profile report failed: {exc}")
 
             result = {
                 "ok": True,
@@ -261,6 +397,7 @@ def main() -> None:
                 "snapshot_path": str(snapshot_path.relative_to(repo_root)),
                 "enrichment": enrichment_status,
                 "classified_path": classified_value,
+                "profile_report_status": profile_report_status,
                 "profile_json_path": profile_json_value,
                 "profile_html_path": profile_html_value,
             }
@@ -268,6 +405,7 @@ def main() -> None:
                 f"[{profile['profile_label']}:{profile['profile_short_id']}] "
                 f"Collected {len(items)} videos -> {result['snapshot_path']}"
                 + (f" -> {classified_value}" if classified_value else "")
+                + (f" -> {profile_json_value}" if profile_json_value else "")
                 + (f" -> {profile_html_value}" if profile_html_value else "")
             )
             self._json_response(200, result)
@@ -276,8 +414,9 @@ def main() -> None:
             print(f"[bridge] {self.address_string()} - {format % values}")
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"YouTube Library Home Bridge v0.3: http://{args.host}:{args.port}")
+    print(f"YouTube Library Home Bridge v0.4: http://{args.host}:{args.port}")
     print("Profile identity: extension-local stable ID + user label")
+    print("Profile reports: JSON + HTML pair -> data/profile_reports")
     print("Classifier: v2 context/entity + intent separation")
     if os.environ.get("YOUTUBE_API_KEY"):
         print("YouTube API enrichment: ENABLED")
