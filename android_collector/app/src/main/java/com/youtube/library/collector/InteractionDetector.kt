@@ -17,14 +17,16 @@ object InteractionDetector {
         val label = buildLabel(event, source).lowercase()
         if (label.isBlank()) return null
 
-        val className = source?.className?.toString().orEmpty().ifBlank { event.className?.toString().orEmpty() }
+        val className = source?.className?.toString().orEmpty().ifBlank {
+            event.className?.toString().orEmpty()
+        }
 
         val isDislike = label.contains("dislike") || label.contains("không thích")
         if (isDislike) {
             val selected = source?.isSelected == true || source?.isCheckedCompat() == true
             return InteractionDetection(
                 eventType = if (selected) "dislike" else "undislike",
-                score = if (selected) -1.0 else 0.0,
+                score = if (selected) -1.0 else 1.0,
                 confidence = 0.75,
                 eventClass = className
             )
@@ -41,15 +43,21 @@ object InteractionDetector {
             )
         }
 
+        // Only count a submit/send action. Opening the comment composer is not
+        // a comment_submit event.
         val commentAction = listOf(
-            "send comment", "post comment", "submit comment", "gửi bình luận", "đăng bình luận",
-            "comment submit", "bình luận"
+            "send comment",
+            "post comment",
+            "submit comment",
+            "gửi bình luận",
+            "đăng bình luận",
+            "comment submit"
         ).any { label.contains(it) }
         if (commentAction) {
             return InteractionDetection(
                 eventType = "comment_submit",
                 score = 1.0,
-                confidence = if (label.contains("gửi") || label.contains("send") || label.contains("post")) 0.9 else 0.6,
+                confidence = 0.9,
                 eventClass = className
             )
         }
@@ -71,9 +79,6 @@ object InteractionDetector {
         return values.joinToString(" ").replace(Regex("\\s+"), " ").trim().take(500)
     }
 
-    // AccessibilityNodeInfo does not expose one stable selected-state contract
-    // across all YouTube UI implementations. This helper intentionally stays
-    // conservative and does not perform any action on the node.
     private fun AccessibilityNodeInfo.isCheckedCompat(): Boolean = try {
         isCheckable && isChecked
     } catch (_: Exception) {
