@@ -2,13 +2,11 @@
 
 > Cập nhật: 2026-08-23
 >
-> Đây là checkpoint canonical. `PROJECT_PLAN.md` giữ roadmap gốc; file này phản ánh kiến trúc đã được chỉnh theo dữ liệu thực tế.
+> Đây là checkpoint canonical. `PROJECT_PLAN.md` giữ roadmap gốc; file này phản ánh kiến trúc hiện tại sau khi chuyển trọng tâm sang distributed natural profile collection.
 
-# 1. Kiến trúc canonical mới
+# 1. Kiến trúc canonical
 
-Trục chính của dự án không phải “một người test nhiều profile rồi nhân thành audience synthetic”.
-
-Trục chính là một **consenting distributed profile panel**:
+Trục chính của dự án là một **consenting distributed profile panel**:
 
 ```text
 PARTICIPANT A                 PARTICIPANT B                 PARTICIPANT C
@@ -34,17 +32,16 @@ Today / 7d / 30d / Long       Today / 7d / 30d / Long       Today / 7d / 30d / L
                          CREATOR COMMUNITY INTELLIGENCE
 ```
 
-Creator cuối cùng chỉ cần biết:
+Creator cuối cùng cần thấy:
 
 ```text
-cộng đồng hiện có bao nhiêu participants / profiles
-content lane nào đang xuất hiện ở nhiều participants
-key/keyword nào là core
-creator tags nào lặp lại
-key nào đang rising/emerging để mở rộng
-intent/format nào phù hợp
-lane nào nên anchor / bridge / controlled expansion
-mức certainty / limitation của panel
+bao nhiêu participants / profiles đang có dữ liệu
+content lane nào xuất hiện ở nhiều participants
+core keys / keywords / tags
+expansion keys đang rising/emerging
+intent/format phù hợp
+anchor / bridge / controlled expansion
+certainty và limitation của panel
 ```
 
 Không gọi các score này là xác suất YouTube recommendation/view.
@@ -52,8 +49,6 @@ Không gọi các score này là xác suất YouTube recommendation/view.
 ---
 
 # 2. Participant khác Profile
-
-Đây là quy tắc bắt buộc.
 
 ```text
 Participant A
@@ -84,15 +79,13 @@ usable_participant_count
 usable_profile_count
 ```
 
-Một tester có nhiều profile vẫn hữu ích để nghiên cứu recommendation states, nhưng không được làm community sample giả lớn hơn số người tham gia thật.
-
 ---
 
-# 3. Dữ liệu thật hiện tại lấy từ đâu
+# 3. Dữ liệu thật hiện tại
 
-Observed data là dữ liệu YouTube thật trả về trên các profile mà participant tự sử dụng và cho phép collector đọc.
+Observed data là recommendation/affinity data thật YouTube trả về trên profile participant tự sử dụng.
 
-Browser profile hiện có thể đóng góp:
+Browser collector hiện đóng góp:
 
 ```text
 Home recommendation exposure
@@ -114,23 +107,33 @@ likes
 comments
 ```
 
-Raw observations vẫn là panel evidence, không phải đại diện mặc định cho toàn bộ YouTube audience.
+Raw observations là panel evidence, không mặc định đại diện toàn bộ YouTube audience.
 
 ---
 
-# 4. Natural/passive browser collector — extension 0.6.0
+# 4. Browser passive collector — extension 0.6.1
 
-Extension hiện có hai mode.
+## 4.1 Auto-on participation model
 
-## 4.1 Passive natural-use mode — ưu tiên
-
-Opt-in một lần trong popup:
+Participant đã biết và chủ động tham gia cộng đồng khi cài collector. Vì vậy runtime không còn checkbox opt-in.
 
 ```text
-Bật passive collection tự động
+install / reload extension
+→ passive collection mặc định ON
+→ participant mở youtube.com
+→ collector tự kích hoạt cho route hiện tại
 ```
 
-Sau đó participant dùng YouTube bình thường.
+Nếu participant muốn ngừng tạm thời, popup chỉ có:
+
+```text
+Tạm dừng thu thập
+Tiếp tục thu thập
+```
+
+Trạng thái `paused=false/true` được lưu local và giữ qua browser restart.
+
+## 4.2 Natural-use rule
 
 Collector KHÔNG:
 
@@ -140,15 +143,17 @@ tự mở video
 tự play
 tự click
 tự like/comment/subscribe
+tự auto-scroll trong passive mode
 ```
 
 Collector chỉ đọc surface participant tự truy cập.
 
 ### Home
 
-Participant tự mở Home và tự scroll.
-
-Sau khoảng thời gian quan sát, extension đọc các video card đã load trong DOM.
+```text
+participant tự mở Home / tự scroll
+→ sau thời gian chờ collector đọc video cards đã load
+```
 
 Daily cap ban đầu:
 
@@ -156,25 +161,19 @@ Daily cap ban đầu:
 Home <= 2 passive snapshots/day
 ```
 
-Không auto-scroll trong passive mode.
-
 ### Up Next
 
-Participant tự mở một video/watch page.
-
-Extension chờ page load rồi đọc recommendation DOM trong secondary column.
-
 ```text
-/watch?v=...
-→ passive Up Next snapshot
+participant tự mở /watch?v=...
+→ collector đọc recommendation DOM ở secondary column
 ```
 
-Không request random watch page/replay trong passive mode.
+Không random watch-page/replay trong passive mode.
 
-Daily cap ban đầu:
+Daily cap:
 
 ```text
-<= 8 naturally opened watch pages/day
+Up Next <= 8 naturally opened watch pages/day
 ```
 
 ### Subscriptions
@@ -186,7 +185,7 @@ Nếu participant tự mở:
 /feed/channels
 ```
 
-collector có thể đọc read-only snapshot tương ứng.
+collector đọc read-only snapshot tương ứng.
 
 Daily cap:
 
@@ -195,9 +194,9 @@ Subscriptions <= 1/day
 Channels <= 1/day
 ```
 
-## 4.2 Manual fallback
+## 4.3 Manual fallback
 
-Pipeline manual cũ vẫn giữ để debug/test:
+Pipeline manual cũ vẫn giữ chỉ để debug/test:
 
 ```text
 manual Home scroll
@@ -205,20 +204,16 @@ manual Subscriptions fetch
 random Home seed → watch HTML replay
 ```
 
-Manual replay không phải nguồn natural panel ưu tiên về lâu dài.
+Manual replay không phải nguồn natural panel ưu tiên.
 
 ---
 
 # 5. Local Profile Engine — Phase 5.5
 
-Mỗi participant/device vẫn xử lý profile local trước.
+Mỗi participant/device xử lý profile local trước:
 
 ```text
-Home
-+
-Up Next
-+
-Subscriptions
+Home + Up Next + Subscriptions
 ↓
 API enrichment
 ↓
@@ -235,7 +230,7 @@ trend state
 current longitudinal profile
 ```
 
-Current files:
+Files:
 
 ```text
 data/profile_library/profile_<id>.json
@@ -243,7 +238,7 @@ data/profile_library/profile_<id>.history.jsonl
 data/profile_library/daily/profile_<id>/YYYY-MM-DD.json
 ```
 
-Temporal states:
+Trend states:
 
 ```text
 baseline
@@ -258,17 +253,17 @@ revived
 Current versions:
 
 ```text
-extension                         0.6.0
-local bridge                      0.8
-longitudinal profile analysis     2.5.0
-session creator profile           2.1.0
+browser extension                  0.6.1
+local bridge                       0.8
+longitudinal profile analysis      2.5.0
+session creator profile            2.1.0
 ```
 
-Phase 5.5 validation nhiều ngày vẫn tiếp tục.
+Phase 5.5 validation nhiều ngày tiếp tục song song.
 
 ---
 
-# 6. Privacy-preserving community submission
+# 6. Community submission protocol
 
 Raw browser/account data không cần gửi lên server trung tâm.
 
@@ -284,27 +279,25 @@ Submitter:
 scripts/community/submit_profile.py
 ```
 
-Mỗi local installation tự tạo random:
+Mỗi installation tự tạo random:
 
 ```text
 participant_id
 device_id
 ```
 
-lưu tại:
+lưu local tại:
 
 ```text
 data/collector_identity.json
 ```
 
-File này git-ignored.
-
-Sanitized community payload chỉ gửi:
+Sanitized payload gửi:
 
 ```text
 participant_id
 device_id
-profile_id / derived profile_key
+profile_key
 analysis version
 certainty
 daily observation count
@@ -314,14 +307,14 @@ keyword trends
 tag trends
 ```
 
-Không gửi theo protocol v1:
+Protocol v1 không gửi:
 
 ```text
 cookies
 password
 Google email/account identifier
 profile display label
-raw Home/Up Next video rows
+raw Home/Up Next rows
 raw browsing/watch history
 subscribed-channel names/list
 ```
@@ -336,12 +329,12 @@ Module:
 scripts/community/collector_agent.py
 ```
 
-Nhiệm vụ:
+Flow:
 
 ```text
 watch data/profile_library/profile_*.json
 ↓
-phát hiện profile current thay đổi
+profile current thay đổi
 ↓
 build sanitized submission
 ↓
@@ -362,7 +355,7 @@ Hoặc để agent launch local bridge:
 python scripts\community\collector_agent.py --launch-bridge --endpoint https://YOUR_SERVER
 ```
 
-Agent không browse YouTube; nó chỉ auto-sync kết quả local collector.
+Lưu ý: extension auto-start khi truy cập YouTube, nhưng Python local bridge/agent hiện vẫn cần chạy. Bước triển khai participant hoàn chỉnh về sau nên đóng gói bridge + sync agent thành background desktop service/startup app để participant không cần terminal.
 
 ---
 
@@ -374,34 +367,14 @@ Module:
 scripts/community/community_server.py
 ```
 
-Endpoint:
+Endpoints:
 
 ```text
 POST /v1/profile
 GET  /health
 ```
 
-Chạy local/test:
-
-```bat
-set "YT_LIBRARY_COMMUNITY_TOKEN=RANDOM_SECRET"
-python scripts\community\community_server.py --host 127.0.0.1 --port 8770
-```
-
-Nếu deploy internet:
-
-```text
-HTTPS reverse proxy
-firewall
-Bearer token
-server-side storage backup
-```
-
-Không expose server HTTP unauthenticated trực tiếp ra internet.
-
-Accepted profile submission sẽ replace current central snapshot của profile đó và rebuild creator report.
-
-Central data:
+Central storage/report:
 
 ```text
 data/community_profiles/
@@ -409,7 +382,16 @@ data/community_reports/current.json
 data/community_reports/current.html
 ```
 
-Deployment data được git-ignore.
+Nếu deploy internet:
+
+```text
+HTTPS reverse proxy
+firewall
+auth token
+server-side backup
+```
+
+Không expose HTTP unauthenticated trực tiếp ra Internet.
 
 ---
 
@@ -421,9 +403,7 @@ Module:
 scripts/community/build_community_report.py
 ```
 
-Đây là module tổng mà creator-facing architecture cần.
-
-Nó đọc tất cả current sanitized community profiles và aggregate theo participant-balanced weighting.
+Aggregate theo participant-balanced weighting.
 
 Mỗi content lane trả:
 
@@ -449,7 +429,6 @@ top intent
 Ví dụ:
 
 ```text
-Community key:
 science_technology::tutorial
 
 Participants matched: 8 / 12
@@ -468,11 +447,10 @@ Expansion keys:
 agent workflow
 AI voice
 
-Fit band:
-strong
+Fit band: strong
 ```
 
-Ý nghĩa đúng:
+Ý nghĩa:
 
 > Hướng nội dung này có support rộng trong community panel đang quan sát.
 
@@ -484,7 +462,7 @@ Không được diễn giải:
 
 # 10. Creator UI contract
 
-UI chính về sau là:
+UI chính:
 
 ```text
 COMMUNITY OVERVIEW
@@ -497,8 +475,11 @@ TOP CONTENT OPPORTUNITIES
 #1 Lane A
 #2 Lane B
 #3 Lane C
+```
 
-mỗi lane:
+Mỗi lane hiển thị:
+
+```text
 participants matched
 profiles matched
 core keys
@@ -509,22 +490,13 @@ intent
 fit band
 ```
 
-Sau đó mới drill-down:
-
-```text
-profile nào hỗ trợ lane
-Home/Up Next/Subscriptions evidence
-Today/7d/30d/Long
-keyword/tag provenance
-```
-
-Người sáng tạo không cần đọc raw profile JSON hoặc từng robot.
+Drill-down mới hiển thị profile/surface/provenance chi tiết.
 
 ---
 
-# 11. Android collector direction
+# 11. Android direction
 
-Android phải dùng cùng community submission protocol.
+Android phải dùng cùng community submission protocol:
 
 ```text
 Android collector
@@ -536,20 +508,9 @@ community_profile_submission.v1
 central server
 ```
 
-Quan trọng:
+Public YouTube Data API không expose personalized Home recommendation feed, nên chưa được tuyên bố Android native app có thể lấy Home/Up Next giống browser nếu chưa có legitimate read-only interface được validate.
 
-Public YouTube Data API **không expose personalized Home recommendation feed**.
-
-Vì vậy chưa được tuyên bố Android native app có thể lấy chính xác Home/Up Next như browser extension nếu chưa có legitimate read-only interface được validate.
-
-Android v1 nên bắt đầu từ những surface có thể thu hợp lệ/read-only, ví dụ:
-
-```text
-officially authorized subscription/account metadata nếu API cho phép
-participant-controlled web collector container nếu auth/platform policy phù hợp
-```
-
-Không mặc định dùng Android Accessibility để scrape YouTube app vì nó có thể thu cả dữ liệu UI nhạy cảm ngoài phạm vi.
+Không mặc định dùng Android Accessibility để scrape app YouTube vì có thể thu dữ liệu UI nhạy cảm ngoài phạm vi.
 
 Chi tiết:
 
@@ -559,38 +520,28 @@ docs/DISTRIBUTED_PROFILE_COLLECTION.md
 
 ---
 
-# 12. Viewer Robot / Phase 6 — vai trò đã điều chỉnh
+# 12. Viewer Robot — vai trò phụ
 
-Code Phase 6 slice 1 vẫn tồn tại:
+Phase 6 synthetic code vẫn giữ:
 
 ```text
 schemas/viewer_robot.v1.schema.json
 taxonomy/interest_relations.v1.json
 scripts/viewer/generate_viewers.py
 scripts/viewer/summarize_viewer_batch.py
-tests/test_viewer_generator.py
 ```
 
-Nhưng synthetic viewers KHÔNG làm tăng số evidence thật.
+Nhưng synthetic viewers không làm tăng evidence thật và không rewrite community truth.
 
-```text
-20 real community profiles
-→ 10,000 robots
-```
-
-vẫn chỉ có evidence thật từ 20 profiles/participants tương ứng.
-
-Viewer Robot chỉ là:
+Viewer Robot chỉ dùng cho:
 
 ```text
 scenario testing
 sensitivity testing
-future offline feed experiments
+offline simulation experiments
 ```
 
-Nó không được rewrite canonical observed/community data và không phải nguồn chính để creator quyết định khi community evidence thực có sẵn.
-
-Trước mắt ưu tiên hoàn thiện distributed natural collection + community aggregator trước khi mở rộng Phase 7–9.
+Ưu tiên hiện tại là distributed natural collection + community intelligence.
 
 ---
 
@@ -598,7 +549,7 @@ Trước mắt ưu tiên hoàn thiện distributed natural collection + communit
 
 ```text
 # Browser collector
-browser_extension/youtube_home_collector/manifest.json        0.6.0
+browser_extension/youtube_home_collector/manifest.json        0.6.1
 browser_extension/youtube_home_collector/background.js
 browser_extension/youtube_home_collector/passive_collector.js
 browser_extension/youtube_home_collector/popup.html
@@ -611,7 +562,7 @@ scripts/homepage/home_bridge.py
 scripts/profile/build_consolidated_profile.py
 scripts/profile/build_temporal_profile.py
 
-# Distributed community network
+# Community network
 schemas/community_profile_submission.v1.schema.json
 scripts/community/submit_profile.py
 scripts/community/collector_agent.py
@@ -627,136 +578,89 @@ scripts/viewer/summarize_viewer_batch.py
 
 ---
 
-# 14. Tests / CI
+# 14. Immediate validation
 
-Workflow:
+## Browser
 
-```text
-.github/workflows/python-tests.yml
-```
-
-Checks:
+Với ít nhất hai independent participants/devices:
 
 ```text
-Python compile
-community schema JSON
-viewer schema JSON
-extension manifest JSON
-extension JavaScript syntax
-unit tests
-```
-
-Community tests khóa:
-
-```text
-participant balancing
-participant vs profile counts
-community lane aggregation
-rising/emerging expansion keys
-```
-
----
-
-# 15. Immediate next validation
-
-Không cần quay lại thiết kế Viewer Robot ngay.
-
-## A. Browser passive collector
-
-Test ít nhất hai independent participants/devices nếu có thể.
-
-Mỗi participant:
-
-```text
-reload extension 0.6.0
-enable passive collector
-run local bridge
-use YouTube normally
+reload extension 0.6.1
+KHÔNG mở popup để bật gì
+mở YouTube và dùng bình thường
 ```
 
 Check:
 
 ```text
-Home passive snapshots đúng video card
-Up Next chỉ đến từ watch pages participant tự mở
+passive collection tự chạy trên first YouTube visit
+Home snapshot đúng cards
+Up Next chỉ đến từ watch page participant tự mở
 Subscriptions snapshot hợp lý
 daily caps hoạt động
+pause dừng capture
+resume có thể schedule lại route hiện tại
 không auto-navigation/player
-profile temporal update vẫn đúng
 ```
 
-## B. Community pipeline
+## Community
 
-Central machine:
-
-```bat
-set "YT_LIBRARY_COMMUNITY_TOKEN=..."
-python scripts\community\community_server.py --host 0.0.0.0 --port 8770
-```
-
-Participant machine:
-
-```bat
-set "YT_LIBRARY_COMMUNITY_ENDPOINT=https://..."
-set "YT_LIBRARY_COMMUNITY_TOKEN=..."
-python scripts\community\collector_agent.py
-```
-
-Check:
+Check case:
 
 ```text
 Participant A 3 profiles
 Participant B 1 profile
 → participant_count = 2
 → profile_count = 4
-→ A total aggregate weight không > B chỉ vì có 3 profiles
+→ A không có tổng aggregate weight lớn hơn B chỉ vì nhiều profiles
 ```
 
-## C. Creator report
+## Creator report
 
 Check:
 
 ```text
-core keys có đúng shared semantic không
-core tags có noisy/stale tags không
-expansion keys có thật sự rising/emerging không
-participant coverage có dễ hiểu không
-fit-band thresholds có cần tune không
+core keys đúng shared semantic
+core tags không bị stale/noisy
+expansion keys thật sự rising/emerging
+participant coverage dễ hiểu
+fit-band thresholds hợp lý
 ```
 
 ---
 
-# 16. Next engineering steps
+# 15. Next engineering steps
 
-Ưu tiên theo thứ tự:
+Ưu tiên:
 
 ```text
-1. Validate passive browser collector 0.6.0
-2. Validate community server với >=2 independent participants
-3. Make community HTML the main Creator Dashboard
-4. Add profile drill-down/provenance links
-5. Build Android adapter against the same submission protocol
-6. Add channel affinity / freshness / language / duration dimensions
-7. Revisit Phase 6 synthetic robustness only as sandbox support
+1. Validate extension 0.6.1 auto-on với >=2 participants
+2. Package local bridge + community sync agent thành background desktop service/startup app
+3. Validate community server với >=2 participants
+4. Make community HTML the main Creator Dashboard
+5. Add profile drill-down/provenance
+6. Build Android adapter cùng submission protocol
+7. Add channel affinity / freshness / language / duration dimensions
+8. Revisit synthetic Viewer Robot only as sandbox support
 ```
 
 ---
 
-# 17. Safety / data boundary
+# 16. Data/safety boundary
 
-- Participant phải opt-in collector.
-- Browser passive mode chỉ quan sát natural navigation; không tự tạo traffic.
+- Participation consent được xác lập khi người dùng chủ động tham gia/cài collector; không cần runtime opt-in checkbox.
+- Participant luôn có nút pause/resume.
+- Passive mode chỉ quan sát natural navigation; không tự tạo traffic.
 - Không tự click/play/like/comment/subscribe/unsubscribe.
 - Không dùng project profiles làm initial-engagement network.
 - Community server không cần cookies/password/Google account IDs.
 - Participant ID là random project ID, không phải email.
-- Một participant có nhiều profiles không được tính thành nhiều independent humans trong aggregate weighting.
+- Một participant có nhiều profiles không được tính thành nhiều independent humans.
 - Community fit/coverage không phải xác suất view/recommendation.
-- External real audience vẫn là population ngoài dự án.
 - Synthetic Viewer Robot chỉ là sandbox, không phải ground truth.
 
 ---
 
-# 18. Câu mở đầu cho cuộc trò chuyện sau
+# 17. Câu mở đầu cho cuộc trò chuyện sau
 
-> Đọc `PLAN.md`. Kiến trúc hiện tại là distributed natural profile collection: extension 0.6.0 passive collector → local longitudinal profile → sanitized community sync → participant-balanced creator community report. Tiếp tục validate passive collector/community server và xây Creator Community Dashboard; Viewer Robot chỉ là synthetic sandbox phụ.
+> Đọc `PLAN.md`. Kiến trúc hiện tại là distributed natural profile collection: extension 0.6.1 auto-on khi participant truy cập YouTube → local longitudinal profile → sanitized community sync → participant-balanced creator community report. Tiếp tục validate auto-on collector, đóng gói local bridge/agent thành background service và hoàn thiện Creator Community Dashboard.
