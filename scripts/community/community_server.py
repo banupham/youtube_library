@@ -6,8 +6,8 @@ Canonical runtime:
     python scripts/community/community_server.py
 
 One process, one port (8770 by default). Chrome collection, Android ingest,
-profile analysis, community aggregation, and human-facing HTML are exposed from
-this entrypoint. No secondary HTTP bridge is started.
+natural interaction evidence, profile analysis, community aggregation, and
+human-facing HTML are exposed from this entrypoint.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from browser_pipeline import BrowserPipeline
+from interaction_store import InteractionStore
 
 MAX_BODY_BYTES = 2_000_000
 ALLOWED_PLATFORMS = {"browser", "android", "other"}
@@ -123,7 +124,6 @@ def validate_android_ingest(payload: object) -> list[str]:
             errors.append(f"missing {key}")
     if payload.get("schema_version") != "1.0.0":
         errors.append("unsupported schema_version")
-
     for key, minimum, maximum in (
         ("participant_id", 4, 200),
         ("device_id", 4, 200),
@@ -132,7 +132,6 @@ def validate_android_ingest(payload: object) -> list[str]:
         value = str(payload.get(key) or "")
         if not minimum <= len(value) <= maximum:
             errors.append(f"invalid {key}")
-
     snapshot = payload.get("snapshot")
     if not isinstance(snapshot, dict):
         errors.append("snapshot must be an object")
@@ -145,7 +144,6 @@ def validate_android_ingest(payload: object) -> list[str]:
         errors.append("snapshot.source_package must be YouTube Android")
     if snapshot.get("extraction_mode") != ANDROID_EXTRACTION_MODE:
         errors.append("invalid snapshot.extraction_mode")
-
     captured_at = str(snapshot.get("captured_at") or "")
     if len(captured_at) < 10 or not DAY_RE.match(captured_at[:10]):
         errors.append("invalid snapshot.captured_at")
@@ -188,6 +186,33 @@ def file_contains_tree_signature(path: Path, signature: str) -> bool:
     return False
 
 
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def interaction_card(summary: dict | None) -> str:
+    if not summary:
+        return ""
+    seven = summary.get("rolling_7d") or {}
+    thirty = summary.get("rolling_30d") or {}
+    counts = seven.get("event_counts") or {}
+    sub = seven.get("video_open_subscription_counts") or {}
+    return f"""
+<section style="margin:20px auto;max-width:1100px;padding:0 20px">
+<div style="background:#171b22;border:1px solid #303742;border-radius:16px;padding:20px;color:#eef2f7;font-family:system-ui,sans-serif">
+<h2 style="margin-top:0">Natural interactions</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+<div><b>7 ngày</b><br>score {html.escape(str(seven.get('score_total', 0)))} · {html.escape(str(seven.get('event_count', 0)))} events</div>
+<div><b>30 ngày</b><br>score {html.escape(str(thirty.get('score_total', 0)))} · {html.escape(str(thirty.get('event_count', 0)))} events</div>
+<div><b>7d Like / Comment</b><br>{html.escape(str(counts.get('like', 0)))} / {html.escape(str(counts.get('comment_submit', 0)))}</div>
+<div><b>Video mở 7d</b><br>subscribed {html.escape(str(sub.get('subscribed', 0)))} · non-sub {html.escape(str(sub.get('not_subscribed', 0)))} · unknown {html.escape(str(sub.get('unknown', 0)))}</div>
+</div>
+<p style="color:#aab2bf;margin-bottom:0">Score model: natural_interaction_v1. Comment chỉ lưu sự kiện đã gửi, không lưu nội dung comment.</p>
+</div></section>
+"""
+
+
 def empty_dashboard() -> str:
     return """<!doctype html><html lang="vi"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -219,11 +244,8 @@ def main() -> None:
     report_html.parent.mkdir(parents=True, exist_ok=True)
     token = os.environ.get("YT_LIBRARY_COMMUNITY_TOKEN")
     write_lock = threading.RLock()
-    browser_pipeline = BrowserPipeline(
-        repo_root,
-        no_enrich=args.no_enrich,
-        no_classify=args.no_classify,
-    )
+    browser_pipeline = BrowserPipeline(repo_root, no_enrich=args.no_enrich, no_classify=args.no_classify)
+    interaction_store = InteractionStore(repo_root)
 
     def rebuild_report() -> None:
         subprocess.run(
@@ -241,13 +263,33 @@ def main() -> None:
             check=True,
         )
 
+    def attach_interactions_to_profile(response: dict) -> dict | None:
+        profile_id = str(response.get("profile_id") or "")
+        summary = interaction_store.summary_for_profile(profile_id)
+        if not summary:
+            return None
+        for key in ("profile_json_path", "library_path"):
+            value = response.get(key)
+            if not value:
+                continue
+            path = repo_root / str(value)
+            if not path.exists():
+                continue
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                payload["natural_interactions"] = summary
+                write_json(path, payload)
+            except (OSError, json.JSONDecodeError):
+                continue
+        return summary
+
     try:
         rebuild_report()
     except subprocess.CalledProcessError as exc:
         print(f"Warning: initial creator dashboard build failed: {exc}")
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "YouTubeLibraryCentral/2.0"
+        server_version = "YouTubeLibraryCentral/2.1"
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -316,10 +358,24 @@ def main() -> None:
                     self._html(400, "<h1>Invalid profile id</h1>")
                     return
                 profile_html = repo_root / "data" / "profile_reports" / f"profile_{short_id}__current.profile.html"
-                if profile_html.exists():
-                    self._html_file(profile_html)
-                else:
+                profile_json = repo_root / "data" / "profile_reports" / f"profile_{short_id}__current.profile.json"
+                if not profile_html.exists():
                     self._html(404, f"<h1>Profile chưa có report</h1><p>{html.escape(short_id)}</p><p><a href='/'>Dashboard</a></p>")
+                    return
+                try:
+                    page = profile_html.read_text(encoding="utf-8")
+                    summary = None
+                    if profile_json.exists():
+                        profile = json.loads(profile_json.read_text(encoding="utf-8"))
+                        identity = profile.get("profile") or profile.get("collector_profile") or {}
+                        profile_id = str(identity.get("profile_id") or "")
+                        if profile_id:
+                            summary = interaction_store.summary_for_profile(profile_id)
+                    card = interaction_card(summary)
+                    page = page.replace("</body>", card + "</body>") if card else page
+                    self._html(200, page)
+                except (OSError, json.JSONDecodeError):
+                    self._html_file(profile_html)
                 return
             if path == "/health":
                 self._json(
@@ -327,7 +383,7 @@ def main() -> None:
                     {
                         "ok": True,
                         "service": "youtube-library-central",
-                        "version": "2.0.0",
+                        "version": "2.1.0",
                         "port": args.port,
                         "single_process": True,
                         "dashboard": "/",
@@ -335,13 +391,15 @@ def main() -> None:
                         "browser_finalize": "/finalize",
                         "profile_ingest": "/v1/profile",
                         "android_snapshot_ingest": "/v1/android/snapshot",
+                        "interaction_ingest": "/v1/interaction",
                     },
                 )
                 return
             self._json(404, {"error": "not_found"})
 
         def do_POST(self) -> None:  # noqa: N802
-            if self.path not in {"/collect", "/finalize", "/v1/profile", "/v1/android/snapshot"}:
+            allowed = {"/collect", "/finalize", "/v1/profile", "/v1/android/snapshot", "/v1/interaction"}
+            if self.path not in allowed:
                 self._json(404, {"error": "not_found"})
                 return
             if not self._authorized():
@@ -357,11 +415,13 @@ def main() -> None:
             elif self.path == "/finalize":
                 status, response = browser_pipeline.finalize(payload)
                 if status == 200:
-                    response["profile_url"] = f"http://127.0.0.1:{args.port}{response['profile_url']}"
-                    response["dashboard_url"] = f"http://127.0.0.1:{args.port}/"
+                    response["natural_interactions"] = attach_interactions_to_profile(response)
                 self._json(status, response)
             elif self.path == "/v1/android/snapshot":
                 self._handle_android_snapshot(payload)
+            elif self.path == "/v1/interaction":
+                status, response = interaction_store.ingest(payload)
+                self._json(status, response)
             else:
                 self._handle_profile(payload)
 
@@ -382,16 +442,7 @@ def main() -> None:
                     report_status = "updated"
                 except subprocess.CalledProcessError as exc:
                     report_status = f"failed:{exc.returncode}"
-            self._json(
-                200,
-                {
-                    "ok": True,
-                    "profile_key": profile_key,
-                    "stored": filename,
-                    "community_report_status": report_status,
-                    "dashboard_url": f"http://127.0.0.1:{args.port}/",
-                },
-            )
+            self._json(200, {"ok": True, "profile_key": profile_key, "stored": filename, "community_report_status": report_status, "dashboard_url": "/"})
 
         def _handle_android_snapshot(self, payload: object) -> None:
             errors = validate_android_ingest(payload)
@@ -416,26 +467,17 @@ def main() -> None:
                 if not duplicate:
                     with path.open("a", encoding="utf-8") as handle:
                         handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
-            self._json(
-                200,
-                {
-                    "ok": True,
-                    "duplicate": duplicate,
-                    "tree_signature": signature,
-                    "surface": surface,
-                    "stored_day": day,
-                    "profile_report_updated": False,
-                },
-            )
+            self._json(200, {"ok": True, "duplicate": duplicate, "tree_signature": signature, "surface": surface, "stored_day": day, "profile_report_updated": False})
 
         def log_message(self, format: str, *values: object) -> None:
             print(f"[central] {self.address_string()} - {format % values}")
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"YouTube Library Central Server v2.0: http://{args.host}:{args.port}")
+    print(f"YouTube Library Central Server v2.1: http://{args.host}:{args.port}")
     print(f"Dashboard: http://127.0.0.1:{args.port}/")
     print("Chrome: POST /collect + POST /finalize")
     print("Android: POST /v1/android/snapshot")
+    print("Natural interactions: POST /v1/interaction")
     print("Community profile: POST /v1/profile")
     print("Runtime: ONE PROCESS / ONE PORT")
     if os.environ.get("YOUTUBE_API_KEY"):
