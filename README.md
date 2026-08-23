@@ -31,13 +31,13 @@ Passive collector tự hoạt động khi participant dùng YouTube:
 Home → visible recommendation cards
 Watch → video_open + Up Next
 Subscriptions / Channels
-Like / unlike / dislike
+Like / unlike / dislike / undislike
 Comment submission event
 ```
 
 Comment chỉ ghi **sự kiện đã gửi comment**, không ghi nội dung comment hay text người dùng gõ.
 
-Chrome có Server URL / Project token / Participant ID trong popup và gửi trực tiếp tới Central Server. Browser tính `natural_interaction_v1` score trước khi gửi.
+Chrome có Server URL / Project token / Participant ID trong popup và gửi trực tiếp tới Central Server. Browser tính `natural_interaction_v1` score trước khi gửi. Sau `/finalize`, central tự promote longitudinal Chrome profile thành sanitized community profile và rebuild Dashboard; không cần agent/server phụ.
 
 ### Android `0.3.0`
 
@@ -72,7 +72,7 @@ GET  /                    Creator Dashboard
 GET  /profile/<id>         Browser profile report
 GET  /health               Server status
 POST /collect              Chrome recommendation evidence
-POST /finalize             Chrome longitudinal profile update
+POST /finalize             Chrome longitudinal profile + community update
 POST /v1/android/snapshot  Android raw Accessibility evidence
 POST /v1/interaction       Natural interaction evidence
 POST /v1/profile           Sanitized analyzed community profile
@@ -99,9 +99,11 @@ video_open       +0.25
 like             +1.00
 unlike           -1.00
 dislike          -1.00
-undislike         0.00
+undislike        +1.00
 comment_submit   +1.00
 ```
+
+`like → unlike` và `dislike → undislike` là các delta đảo ngược nhau để tổng score không bị tích lũy sai khi người dùng đổi trạng thái.
 
 Score model:
 
@@ -168,7 +170,8 @@ Human-facing output ưu tiên dashboard/profile HTML. Raw JSON, Accessibility no
 ```text
 Chrome passive + interactions          implemented 0.7.0
 Chrome configurable central sync       implemented
-Central single process :8770           implemented 2.1
+Chrome finalize → community dashboard  implemented
+Central single process :8770           implemented 2.2
 Daily / rolling 7d/30d interactions    implemented
 Android collector source               implemented 0.3.0
 Android snapshot + event auto sync      implemented
