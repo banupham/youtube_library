@@ -28,7 +28,20 @@ jobs:
           python -m json.tool taxonomy/interest_relations.v1.json > /dev/null
           python -m json.tool schemas/viewer_robot.v1.schema.json > /dev/null
           python -m json.tool schemas/community_profile_submission.v1.schema.json > /dev/null
+          python -m json.tool schemas/android_accessibility_snapshot.v1.schema.json > /dev/null
           python -m json.tool browser_extension/youtube_home_collector/manifest.json > /dev/null
+      - name: Validate Android XML files
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          for path in [
+              'android_collector/app/src/main/AndroidManifest.xml',
+              'android_collector/app/src/main/res/xml/accessibility_service_config.xml',
+              'android_collector/app/src/main/res/values/strings.xml',
+          ]:
+              ET.parse(path)
+              print('OK', path)
+          PY
       - name: Validate extension JavaScript syntax
         run: |
           node --check browser_extension/youtube_home_collector/background.js
