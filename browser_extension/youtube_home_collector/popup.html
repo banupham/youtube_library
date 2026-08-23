@@ -41,7 +41,7 @@
 
   <div class="section">
     <strong>Up Next sampling</strong>
-    <div class="hint">Sau khi đọc Home, extension chọn ngẫu nhiên vài video và tải HTML watch page cùng cookie profile để đọc secondaryResults. Không điều hướng tới video và không khởi tạo player.</div>
+    <div class="hint">Sau khi đọc Home, extension chọn ngẫu nhiên vài video và tải HTML watch page cùng cookie profile để đọc secondaryResults. Mỗi seed có thể replay nhiều lần để đo độ ổn định của Up Next. Không điều hướng tới video và không khởi tạo player.</div>
 
     <label>
       Số video Home random để đọc Up Next
@@ -49,12 +49,17 @@
     </label>
 
     <label>
-      Số gợi ý Up Next lấy mỗi video
+      Số lần replay Up Next mỗi video
+      <input id="upNextReplays" type="number" min="1" max="10" value="3">
+    </label>
+
+    <label>
+      Số gợi ý Up Next lấy mỗi replay
       <input id="upNextLimit" type="number" min="5" max="40" value="20">
     </label>
   </div>
 
-  <button id="collect">Collect Home + random Up Next</button>
+  <button id="collect">Collect Home + replay Up Next</button>
   <div id="status">Bridge cần chạy tại 127.0.0.1:8765.</div>
 
   <script src="popup.js"></script>
