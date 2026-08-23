@@ -19,9 +19,13 @@ jobs:
           python -m py_compile scripts/profile/build_temporal_profile.py
           python -m py_compile scripts/viewer/generate_viewers.py
           python -m py_compile scripts/viewer/summarize_viewer_batch.py
+          python -m py_compile scripts/community/build_community_report.py
+          python -m py_compile scripts/community/submit_profile.py
+          python -m py_compile scripts/community/community_server.py
       - name: Validate JSON seed/schema files
         run: |
           python -m json.tool taxonomy/interest_relations.v1.json > /dev/null
           python -m json.tool schemas/viewer_robot.v1.schema.json > /dev/null
+          python -m json.tool schemas/community_profile_submission.v1.schema.json > /dev/null
       - name: Run unit tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
