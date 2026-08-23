@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>YouTube Home Collector</title>
+  <title>YouTube Recommendation Collector</title>
   <style>
-    body { font-family: Arial, sans-serif; width: 330px; margin: 14px; }
+    body { font-family: Arial, sans-serif; width: 340px; margin: 14px; }
     label { display: block; margin-top: 10px; font-size: 13px; }
     input { width: 100%; box-sizing: border-box; padding: 7px; margin-top: 4px; }
     button { width: 100%; margin-top: 14px; padding: 10px; cursor: pointer; }
@@ -13,11 +13,12 @@
     .hint { color: #555; font-size: 12px; line-height: 1.4; }
     .profile-box { margin: 10px 0 4px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
     .profile-id { margin-top: 5px; font-family: monospace; font-size: 11px; color: #666; word-break: break-all; }
+    .section { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ddd; }
   </style>
 </head>
 <body>
-  <strong>YouTube Home Collector</strong>
-  <p class="hint">Dùng ngay profile trình duyệt hiện tại. Chỉ đọc card Home và scroll, không click/play video.</p>
+  <strong>YouTube Recommendation Collector</strong>
+  <p class="hint">Đọc Home + Up Next theo profile hiện tại. Không click, không mở player, không play/like/comment/subscribe.</p>
 
   <div class="profile-box">
     <label>
@@ -29,7 +30,7 @@
   </div>
 
   <label>
-    Số lần scroll
+    Số lần scroll Home
     <input id="scrolls" type="number" min="0" max="50" value="8">
   </label>
 
@@ -38,7 +39,22 @@
     <input id="delay" type="number" min="200" max="10000" value="1500">
   </label>
 
-  <button id="collect">Collect + classify</button>
+  <div class="section">
+    <strong>Up Next sampling</strong>
+    <div class="hint">Sau khi đọc Home, extension chọn ngẫu nhiên vài video và tải HTML watch page cùng cookie profile để đọc secondaryResults. Không điều hướng tới video và không khởi tạo player.</div>
+
+    <label>
+      Số video Home random để đọc Up Next
+      <input id="upNextSamples" type="number" min="0" max="10" value="3">
+    </label>
+
+    <label>
+      Số gợi ý Up Next lấy mỗi video
+      <input id="upNextLimit" type="number" min="5" max="40" value="20">
+    </label>
+  </div>
+
+  <button id="collect">Collect Home + random Up Next</button>
   <div id="status">Bridge cần chạy tại 127.0.0.1:8765.</div>
 
   <script src="popup.js"></script>
