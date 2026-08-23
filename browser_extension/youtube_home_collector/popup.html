@@ -16,11 +16,12 @@
     .profile-id { margin-top: 5px; font-family: monospace; font-size: 11px; color: #666; word-break: break-all; }
     .section { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ddd; }
     .checkline { display: flex; align-items: center; gap: 4px; }
+    .auto-box { padding: 10px; border: 1px solid #cfd8ea; background: #f5f8ff; border-radius: 8px; }
   </style>
 </head>
 <body>
   <strong>YouTube Recommendation Collector</strong>
-  <p class="hint">Đọc Home + Up Next + Subscriptions theo profile hiện tại. Không click, không mở player, không play/like/comment/subscribe.</p>
+  <p class="hint">Ưu tiên passive capture khi người tham gia tự dùng YouTube. Manual mode bên dưới chỉ là fallback/test. Collector không tự click/play/like/comment/subscribe.</p>
 
   <div class="profile-box">
     <label>
@@ -28,7 +29,22 @@
       <input id="profileLabel" type="text" maxlength="60" placeholder="Ví dụ: Profile A, Music test, New profile">
     </label>
     <div class="profile-id">ID: <span id="profileId">đang tạo...</span></div>
-    <div class="hint">ID được lưu riêng trong browser profile hiện tại. Mỗi profile chỉ có một hồ sơ tổng hợp hiện tại trong Profile Library.</div>
+    <div class="hint">ID được lưu riêng trong browser profile hiện tại. Không dùng email/account ID làm định danh project.</div>
+  </div>
+
+  <div class="section auto-box">
+    <strong>Passive natural-use collector</strong>
+    <p class="hint">Khi bật, extension chỉ đọc Home/Up Next/Subscriptions trên những trang bạn tự mở và tự sử dụng. Nó không tự mở tab/video và có daily caps để tránh biến việc đo thành hành vi nhân tạo.</p>
+    <label class="checkline">
+      <input id="passiveAutoEnabled" type="checkbox">
+      Bật passive collection tự động
+    </label>
+    <div class="hint">Home tối đa 2 snapshot/ngày · Up Next từ tối đa 8 watch pages tự mở/ngày · Subscriptions/Channels tối đa 1 snapshot/ngày.</div>
+  </div>
+
+  <div class="section">
+    <strong>Manual fallback / test</strong>
+    <p class="hint">Chế độ này giữ pipeline cũ để test collector hoặc bổ sung snapshot khi cần.</p>
   </div>
 
   <label>
@@ -46,7 +62,7 @@
     <p class="hint">Đọc read-only `/feed/subscriptions` và danh sách channel quan sát được từ `/feed/channels`. Đây là explicit-affinity evidence, không phải watch history.</p>
     <label class="checkline">
       <input id="collectSubscriptions" type="checkbox" checked>
-      Thu thập Subscriptions trong phiên này
+      Thu thập Subscriptions trong phiên manual này
     </label>
     <label>
       Số video tối đa từ Subscriptions feed
@@ -55,8 +71,8 @@
   </div>
 
   <div class="section">
-    <strong>Up Next evidence</strong>
-    <div class="hint">Sau Home, extension chọn ngẫu nhiên vài seed và request watch-page HTML nhiều lần để đo Up Next ổn định/biến động. Các replay chỉ là evidence nội bộ; cuối phiên chỉ tạo một báo cáo tổng hợp.</div>
+    <strong>Manual Up Next evidence</strong>
+    <div class="hint">Manual mode có thể request watch-page HTML từ vài Home seed để kiểm tra stability. Passive mode không làm việc này; nó chỉ ghi Up Next của watch page người dùng tự mở.</div>
 
     <label>
       Số video Home random để đọc Up Next
@@ -74,7 +90,7 @@
     </label>
   </div>
 
-  <button id="collect">Collect daily evidence + update Profile Library</button>
+  <button id="collect">Manual collect + update Profile Library</button>
   <div id="status">Bridge cần chạy tại 127.0.0.1:8765.</div>
 
   <script src="subscriptions.js"></script>
