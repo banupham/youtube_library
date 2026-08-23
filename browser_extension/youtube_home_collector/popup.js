@@ -115,6 +115,15 @@ async function collectHomepage(scrolls, delayMs) {
 }
 
 async function collectUpNextFromWatchHtml(parentVideoId, limit, replayToken) {
+  const diagnostics = {
+    renderer_candidates: 0,
+    accepted_video_renderers: 0,
+    rejected_non_video_id: 0,
+    rejected_playlist_or_mix: 0,
+    rejected_parent_video: 0,
+    rejected_missing_title: 0
+  };
+
   function textValue(value) {
     if (!value) return '';
     if (typeof value === 'string') return value.trim();
@@ -122,6 +131,9 @@ async function collectUpNextFromWatchHtml(parentVideoId, limit, replayToken) {
     if (Array.isArray(value.runs)) return value.runs.map((run) => run?.text || '').join('').trim();
     if (typeof value.content === 'string') return value.content.trim();
     return '';
+  }
+  function isVideoId(value) {
+    return /^[A-Za-z0-9_-]{11}$/.test(String(value || ''));
   }
   function parseBalancedJson(source, startIndex) {
     const start = source.indexOf('{', startIndex);
@@ -166,24 +178,104 @@ async function collectUpNextFromWatchHtml(parentVideoId, limit, replayToken) {
     for (const value of Object.values(node)) { const found = findSecondaryResults(value, depth + 1); if (found) return found; }
     return null;
   }
-  function rendererToItem(renderer) {
+  function findWatchEndpoint(renderer) {
+    return renderer?.navigationEndpoint?.watchEndpoint
+      || renderer?.endpoint?.watchEndpoint
+      || renderer?.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint
+      || renderer?.onTap?.innertubeCommand?.watchEndpoint
+      || renderer?.command?.watchEndpoint
+      || null;
+  }
+  function isPlaylistLike(renderer, rendererType, watchEndpoint) {
+    const contentType = String(renderer?.contentType || '').toUpperCase();
+    if (contentType && contentType !== 'LOCKUP_CONTENT_TYPE_VIDEO' && rendererType === 'lockupViewModel') return true;
+    if (/PLAYLIST|RADIO|MIX/.test(contentType)) return true;
+    if (renderer?.playlistId || renderer?.radioRenderer || renderer?.compactRadioRenderer) return true;
+    if (rendererType === 'lockupViewModel' && watchEndpoint?.playlistId) return true;
+    return false;
+  }
+  function rendererToItem(renderer, rendererType = 'generic') {
     if (!renderer || typeof renderer !== 'object') return null;
-    const videoId = renderer.videoId || renderer.contentId || renderer.video_id || '';
-    if (!videoId || videoId === parentVideoId) return null;
-    const title = textValue(renderer.title) || textValue(renderer.headline) || textValue(renderer.metadata?.lockupMetadataViewModel?.title) || textValue(renderer.lockupMetadataViewModel?.title);
-    if (!title) return null;
-    const channel = textValue(renderer.shortBylineText) || textValue(renderer.longBylineText) || textValue(renderer.ownerText);
-    const metadataParts = [textValue(renderer.viewCountText), textValue(renderer.shortViewCountText), textValue(renderer.publishedTimeText)].filter(Boolean);
-    return { video_id: videoId, title, channel, url: `https://www.youtube.com/watch?v=${videoId}`, metadata_text: metadataParts.join(' · '), duration_text: textValue(renderer.lengthText) };
+    diagnostics.renderer_candidates += 1;
+
+    const watchEndpoint = findWatchEndpoint(renderer);
+    if (isPlaylistLike(renderer, rendererType, watchEndpoint)) {
+      diagnostics.rejected_playlist_or_mix += 1;
+      return null;
+    }
+
+    let videoId = '';
+    if (rendererType === 'lockupViewModel') {
+      videoId = watchEndpoint?.videoId || '';
+      if (!videoId && String(renderer?.contentType || '').toUpperCase() === 'LOCKUP_CONTENT_TYPE_VIDEO') {
+        videoId = renderer.contentId || '';
+      }
+    } else {
+      videoId = renderer.videoId || watchEndpoint?.videoId || renderer.video_id || '';
+    }
+
+    if (!isVideoId(videoId)) {
+      diagnostics.rejected_non_video_id += 1;
+      return null;
+    }
+    if (videoId === parentVideoId) {
+      diagnostics.rejected_parent_video += 1;
+      return null;
+    }
+
+    const title = textValue(renderer.title)
+      || textValue(renderer.headline)
+      || textValue(renderer.metadata?.lockupMetadataViewModel?.title)
+      || textValue(renderer.lockupMetadataViewModel?.title);
+    if (!title) {
+      diagnostics.rejected_missing_title += 1;
+      return null;
+    }
+
+    const channel = textValue(renderer.shortBylineText)
+      || textValue(renderer.longBylineText)
+      || textValue(renderer.ownerText)
+      || textValue(renderer.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows?.[0]?.metadataParts?.[0]?.text);
+    const metadataParts = [
+      textValue(renderer.viewCountText), textValue(renderer.shortViewCountText), textValue(renderer.publishedTimeText)
+    ].filter(Boolean);
+
+    diagnostics.accepted_video_renderers += 1;
+    return {
+      video_id: videoId,
+      title,
+      channel,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      metadata_text: metadataParts.join(' · '),
+      duration_text: textValue(renderer.lengthText),
+      renderer_type: rendererType
+    };
   }
   function collectRenderers(node, output, depth = 0) {
     if (!node || typeof node !== 'object' || depth > 24 || output.length >= limit * 5) return;
-    for (const key of ['compactVideoRenderer', 'videoRenderer', 'gridVideoRenderer', 'lockupViewModel']) {
-      if (node[key]) { const item = rendererToItem(node[key]); if (item) output.push(item); }
+
+    for (const key of ['compactVideoRenderer', 'videoRenderer', 'gridVideoRenderer']) {
+      if (node[key]) {
+        const item = rendererToItem(node[key], key);
+        if (item) output.push(item);
+      }
     }
-    if (node.videoId && node.title) { const item = rendererToItem(node); if (item) output.push(item); }
-    if (Array.isArray(node)) { for (const child of node) collectRenderers(child, output, depth + 1); }
-    else { for (const value of Object.values(node)) collectRenderers(value, output, depth + 1); }
+
+    if (node.lockupViewModel) {
+      const item = rendererToItem(node.lockupViewModel, 'lockupViewModel');
+      if (item) output.push(item);
+    }
+
+    if (node.videoId && node.title) {
+      const item = rendererToItem(node, 'directVideoRenderer');
+      if (item) output.push(item);
+    }
+
+    if (Array.isArray(node)) {
+      for (const child of node) collectRenderers(child, output, depth + 1);
+    } else {
+      for (const value of Object.values(node)) collectRenderers(value, output, depth + 1);
+    }
   }
 
   const nonce = encodeURIComponent(String(replayToken || Date.now()));
@@ -196,19 +288,28 @@ async function collectUpNextFromWatchHtml(parentVideoId, limit, replayToken) {
   if (!initialData) throw new Error('Không tìm thấy ytInitialData trong watch HTML.');
   const secondary = findSecondaryResults(initialData);
   if (!secondary) throw new Error('Không tìm thấy secondaryResults/Up Next.');
+
   const raw = [];
   collectRenderers(secondary, raw);
   const seen = new Set();
   const items = [];
   for (const item of raw) {
-    if (!item.video_id || seen.has(item.video_id)) continue;
+    if (!isVideoId(item.video_id) || seen.has(item.video_id)) continue;
     seen.add(item.video_id);
     items.push({ position: items.length + 1, ...item });
     if (items.length >= limit) break;
   }
+
   return {
-    source: 'youtube_up_next', captured_at: new Date().toISOString(), extraction_mode: 'same_origin_watch_html_no_player',
-    parent_video_id: parentVideoId, page_url: `https://www.youtube.com/watch?v=${parentVideoId}`, item_count: items.length, items
+    source: 'youtube_up_next',
+    captured_at: new Date().toISOString(),
+    extraction_mode: 'same_origin_watch_html_video_only_no_player',
+    extraction_version: 'up_next_video_only_v2',
+    parent_video_id: parentVideoId,
+    page_url: `https://www.youtube.com/watch?v=${parentVideoId}`,
+    item_count: items.length,
+    extraction_diagnostics: diagnostics,
+    items
   };
 }
 
