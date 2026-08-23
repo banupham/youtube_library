@@ -1,7 +1,14 @@
 # Local browser profile contains cookies/session data. Never commit it.
 data/browser_profile/
 
-# Personalized YouTube Home snapshots/results are local by default.
+# Personalized YouTube recommendation snapshots/results are local by default.
+data/home_snapshots/**/*.json
+data/home_enriched/**/*.json
+data/home_classified/**/*.json
+data/profile_reports/**/*.json
+data/profile_reports/**/*.html
+
+# Backward compatibility for flat files created by older versions.
 data/home_snapshots/*.json
 data/home_enriched/*.json
 data/home_classified/*.json
