@@ -1,0 +1,19 @@
+{
+  "source": "youtube_home",
+  "captured_at": "2026-08-23T08:30:00Z",
+  "note": "Illustrative sample only; not captured from a real personalized homepage.",
+  "items": [
+    {"position":1,"video_id":"sample01","title":"BREAKING: Election results shake government after surprise vote","channel":"Global News","url":"https://www.youtube.com/watch?v=sample01"},
+    {"position":2,"video_id":"sample02","title":"Tôi thử ChatGPT để code app trong 30 phút","channel":"Tech Việt","url":"https://www.youtube.com/watch?v=sample02"},
+    {"position":3,"video_id":"sample03","title":"BLACKPINK - NEW SONG Official MV","channel":"Music Channel","url":"https://www.youtube.com/watch?v=sample03"},
+    {"position":4,"video_id":"sample04","title":"Top 10 pha bóng hay nhất vòng 5 Premier League","channel":"Bóng đá 24h","url":"https://www.youtube.com/watch?v=sample04"},
+    {"position":5,"video_id":"sample05","title":"GTA 6 Gameplay - 20 Minutes of Open World","channel":"GameZone","url":"https://www.youtube.com/watch?v=sample05"},
+    {"position":6,"video_id":"sample06","title":"Cách nấu phở bò tại nhà ngon như ngoài hàng","channel":"Bếp Nhà","url":"https://www.youtube.com/watch?v=sample06"},
+    {"position":7,"video_id":"sample07","title":"Morning routine của sinh viên năm nhất","channel":"Linh Vlog","url":"https://www.youtube.com/watch?v=sample07"},
+    {"position":8,"video_id":"sample08","title":"Stand-up Comedy: Chuyện đi làm đầu tuần","channel":"Hài Độc Thoại","url":"https://www.youtube.com/watch?v=sample08"},
+    {"position":9,"video_id":"sample09","title":"Review iPhone Pro sau 30 ngày","channel":"Tech Review","url":"https://www.youtube.com/watch?v=sample09"},
+    {"position":10,"video_id":"sample10","title":"5 cổ phiếu tôi đang mua trong tháng này","channel":"Đầu tư thông minh","url":"https://www.youtube.com/watch?v=sample10"},
+    {"position":11,"video_id":"sample11","title":"MCP là gì? Xây AI Agent với Python từ A-Z","channel":"Code Lab","url":"https://www.youtube.com/watch?v=sample11"},
+    {"position":12,"video_id":"sample12","title":"Reaction MV mới của ca sĩ nổi tiếng","channel":"Giải Trí TV","url":"https://www.youtube.com/watch?v=sample12"}
+  ]
+}
