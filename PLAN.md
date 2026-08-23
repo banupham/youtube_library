@@ -194,11 +194,20 @@ ACTION_SET_TEXT
 
 Android v0.1 không đọc package ngoài YouTube và không gửi raw node tree lên community server.
 
-Snapshot chỉ lưu app-internal:
+Canonical private snapshot:
 
 ```text
 files/youtube_accessibility_snapshots/YYYY-MM-DD.jsonl
 ```
+
+Để PC lấy dữ liệu tự động qua ADB mà không copy thủ công trên điện thoại, mỗi snapshot hợp lệ được mirror thêm vào **app-specific external storage**:
+
+```text
+/sdcard/Android/data/com.youtube.library.collector/files/
+  youtube_accessibility_snapshots/YYYY-MM-DD.jsonl
+```
+
+Đây không phải thư mục Downloads/public share. Raw Android node tree vẫn chỉ ở participant device / development workstation và không đi vào community payload.
 
 Mỗi snapshot dùng schema:
 
@@ -268,12 +277,71 @@ Detector hiện chỉ là heuristic từ selected labels / text / contentDescrip
 
 Không hard-code video-card parser trước khi có fixture thật vì native YouTube Accessibility tree thay đổi theo app version/locale và không bảo đảm map 1:1 vào Android Views.
 
+## Android ADB / CMD bridge — IMPLEMENTED
+
+PC bridge:
+
+```text
+scripts/android/android_bridge.py
+scripts/android/android_bridge.cmd
+```
+
+Mục tiêu:
+
+```text
+Android Accessibility collector
+→ app-specific JSONL mirror
+→ USB ADB hoặc Wireless ADB
+→ CMD bridge trên PC
+→ data/android_snapshots/<device-serial>/YYYY-MM-DD.jsonl
+```
+
+Không cần participant bấm Export/copy file trên điện thoại.
+
+Windows CMD:
+
+```bat
+scripts\android\android_bridge.cmd devices
+scripts\android\android_bridge.cmd status
+scripts\android\android_bridge.cmd pull --today
+scripts\android\android_bridge.cmd watch
+```
+
+`watch` mặc định poll khoảng 15 giây và chỉ pull lại khi file JSONL hôm nay thay đổi kích thước.
+
+Inspect ngay sau pull:
+
+```bat
+scripts\android\android_bridge.cmd pull --today --inspect
+scripts\android\android_bridge.cmd pull --today --inspect --show-text
+```
+
+Nhiều device:
+
+```bat
+scripts\android\android_bridge.cmd --serial SERIAL status
+scripts\android\android_bridge.cmd --serial SERIAL watch
+```
+
+Wireless debugging Android 11+:
+
+```bat
+scripts\android\android_bridge.cmd pair IP:PAIRING_PORT
+scripts\android\android_bridge.cmd connect IP:ADB_PORT
+scripts\android\android_bridge.cmd watch
+```
+
+Preferred transport là app-specific external mirror. Bridge có debug fallback qua `adb exec-out run-as` nếu external pull không hoạt động.
+
+Phone-side `Xuất snapshot JSONL hôm nay` vẫn giữ làm fallback, không còn là validation flow chính.
+
 ## Android validation flow — NEXT
 
 ```text
 2+ Android devices / YouTube versions
 → tự dùng Home/Watch/Subscriptions/Shorts/Search
-→ lấy một số node-tree snapshots local
+→ PC chạy android_bridge.cmd watch
+→ lấy node-tree fixtures tự động qua ADB
 → inspect stable node/view-id/accessibility patterns
 → fixture parser tests
 → node tree → normalized video cards/surfaces
@@ -282,9 +350,11 @@ Không hard-code video-card parser trước khi có fixture thật vì native Yo
 → automatic community sync
 ```
 
-Tool inspect local export:
+Tools:
 
 ```text
+scripts/android/android_bridge.py
+scripts/android/android_bridge.cmd
 scripts/android/inspect_accessibility_snapshots.py
 ```
 
@@ -483,7 +553,7 @@ CI:
 Checks hiện gồm:
 
 ```text
-Python compile
+Python compile including Android ADB bridge
 community/viewer/android JSON schemas
 extension manifest
 Android XML well-formedness
@@ -509,6 +579,14 @@ không interaction Accessibility APIs
 không INTERNET / overlay / QUERY_ALL_PACKAGES ở Android v0.1
 ```
 
+Pulled raw fixtures:
+
+```text
+data/android_snapshots/
+```
+
+được `.gitignore` mặc định.
+
 ---
 
 # 10. Immediate next engineering sequence
@@ -516,14 +594,16 @@ không INTERNET / overlay / QUERY_ALL_PACKAGES ở Android v0.1
 ```text
 1. Build/install Android collector v0.1 on one test device
 2. Enable AccessibilityService and use YouTube naturally
-3. Obtain local Home/Watch/Subscriptions/Shorts/Search node fixtures
-4. Validate surface detector and identify stable video-card patterns
-5. Implement Android node → normalized YouTube surface parser
-6. Build Android daily/temporal profile compatible with community schema
-7. Add sanitized Android community sync
-8. Validate participant aggregation with Browser + Android data from >=2 real participants
-9. Make Community HTML the primary Creator Dashboard
-10. Package browser desktop bridge/agent as background service
+3. Run scripts\android\android_bridge.cmd status
+4. Run scripts\android\android_bridge.cmd watch
+5. Collect Home/Watch/Subscriptions/Shorts/Search node fixtures automatically via ADB
+6. Validate surface detector and identify stable video-card patterns
+7. Implement Android node → normalized YouTube surface parser
+8. Build Android daily/temporal profile compatible with community schema
+9. Add sanitized Android community sync
+10. Validate participant aggregation with Browser + Android data from >=2 real participants
+11. Make Community HTML the primary Creator Dashboard
+12. Package browser desktop bridge/agent as background service
 ```
 
 Do not return to large synthetic population work before real distributed collectors are stable.
@@ -537,7 +617,7 @@ Do not return to large synthetic population work before real distributed collect
 - Android AccessibilityService is restricted to YouTube package and read-only node retrieval.
 - No automatic click/play/gesture/like/comment/subscribe/unsubscribe.
 - No project profile is used as an initial-engagement network.
-- Raw Android node tree remains local in v0.1.
+- Raw Android node tree may be mirrored/pulled only to participant-controlled local development storage via ADB; it is not community-server data.
 - Community server does not need cookie/password/Google account identity.
 - Multiple profiles/devices from one participant do not count as multiple independent humans.
 - Community fit/coverage is panel evidence, not probability of view/recommendation.
@@ -547,4 +627,4 @@ Do not return to large synthetic population work before real distributed collect
 
 # 12. Câu mở đầu cho cuộc trò chuyện sau
 
-> Đọc `PLAN.md`. Browser extension 0.6.1 đã auto-on. Android Accessibility collector v0.1 đã có nền: YouTube-only AccessibilityService → bounded local node-tree snapshot → provisional surface detector. Tiếp tục bằng việc lấy fixture node tree thật từ Android, viết node-to-video-card parser, rồi xây Android local profile + sanitized community sync.
+> Đọc `PLAN.md`. Browser extension 0.6.1 đã auto-on. Android Accessibility collector v0.1 đã có YouTube-only node capture và ADB CMD bridge (`android_bridge.cmd`) để PC tự kéo snapshot qua USB/Wireless ADB. Tiếp tục bằng fixture thật từ `data/android_snapshots/`, viết node-to-video-card parser, rồi xây Android local profile + sanitized community sync.
