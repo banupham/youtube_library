@@ -4,7 +4,8 @@
 Supported surfaces:
 - youtube_home: rendered Home cards collected by the extension.
 - youtube_up_next: secondary recommendations extracted from watch-page HTML without
-  navigating to or playing the sampled video.
+  navigating to or playing the sampled video. The same seed can be replayed multiple
+  times so recommendation stability can be measured later.
 
 Pipeline for each surface:
   snapshot -> optional YouTube Data API enrichment -> v2 classification
@@ -50,6 +51,7 @@ CONTEXT_FIELDS = (
     "parent_home_position",
     "source_home_captured_at",
     "sample_context",
+    "replay_context",
     "page_url",
 )
 
@@ -98,6 +100,17 @@ def safe_token(value: object, limit: int = 24) -> str:
     return token[:limit] or "unknown"
 
 
+def replay_index(source_payload: dict) -> int | None:
+    replay = source_payload.get("replay_context")
+    if not isinstance(replay, dict):
+        return None
+    try:
+        value = int(replay.get("replay_index"))
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
 def write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -126,7 +139,15 @@ def surface_description(source_payload: dict) -> str:
     source = source_payload.get("source")
     if source == "youtube_up_next":
         parent = str(source_payload.get("parent_title") or source_payload.get("parent_video_id") or "video gốc")
-        return f"Up Next · seed: {parent}"
+        replay = source_payload.get("replay_context") if isinstance(source_payload.get("replay_context"), dict) else {}
+        try:
+            index = int(replay.get("replay_index") or 0)
+            count = int(replay.get("replay_count") or 0)
+        except (TypeError, ValueError):
+            index = 0
+            count = 0
+        replay_text = f" · replay {index}/{count}" if index and count else ""
+        return f"Up Next · seed: {parent}{replay_text}"
     return "Home exposure"
 
 
@@ -313,7 +334,7 @@ def main() -> None:
         folder.mkdir(parents=True, exist_ok=True)
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "YouTubeLibraryBridge/0.5"
+        server_version = "YouTubeLibraryBridge/0.6"
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -378,7 +399,9 @@ def main() -> None:
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")[:-3]
             if source == "youtube_up_next":
                 parent_token = safe_token(payload.get("parent_video_id"), 16)
-                filename = f"upnext_{parent_token}_{timestamp}.json"
+                replay = replay_index(payload)
+                replay_token = f"_r{replay:02d}" if replay else ""
+                filename = f"upnext_{parent_token}{replay_token}_{timestamp}.json"
             else:
                 filename = f"home_{timestamp}.json"
             stem = Path(filename).stem
@@ -470,10 +493,17 @@ def main() -> None:
             if source == "youtube_up_next":
                 result["parent_video_id"] = payload.get("parent_video_id")
                 result["parent_title"] = payload.get("parent_title")
+                result["replay_context"] = payload.get("replay_context")
+
+            replay_suffix = ""
+            if source == "youtube_up_next":
+                replay = payload.get("replay_context") if isinstance(payload.get("replay_context"), dict) else {}
+                if replay.get("replay_index") and replay.get("replay_count"):
+                    replay_suffix = f" replay {replay['replay_index']}/{replay['replay_count']}"
 
             print(
                 f"[{profile['profile_label']}:{profile['profile_short_id']}] "
-                f"{config['label']} {len(items)} items -> {result['snapshot_path']}"
+                f"{config['label']}{replay_suffix} {len(items)} items -> {result['snapshot_path']}"
                 + (f" -> {classified_value}" if classified_value else "")
                 + (f" -> {profile_html_value}" if profile_html_value else "")
             )
@@ -483,9 +513,10 @@ def main() -> None:
             print(f"[bridge] {self.address_string()} - {format % values}")
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"YouTube Library Recommendation Bridge v0.5: http://{args.host}:{args.port}")
+    print(f"YouTube Library Recommendation Bridge v0.6: http://{args.host}:{args.port}")
     print("Surfaces: Home + Up Next")
     print("Up Next mode: watch-page HTML only; no navigation/player/playback")
+    print("Up Next replay: each sampled seed may be requested repeatedly and stored separately")
     print("Profile identity: extension-local stable ID + user label")
     print("Profile reports: JSON + HTML pair -> data/profile_reports")
     print("Classifier: v2 context/entity + intent separation")
