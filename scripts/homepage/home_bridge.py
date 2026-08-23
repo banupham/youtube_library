@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Local bridge for read-only YouTube recommendation collection.
+"""Local bridge for read-only YouTube recommendation/profile collection.
 
-Home and Up Next observations are stored separately as raw evidence, but each
-collection session produces one consolidated profile report and one current
-profile-library record.
+Home, Up Next and Subscriptions observations are stored separately as raw evidence.
+Each collection session first produces a session-level profile, then Phase 5.5
+updates one longitudinal current profile using daily history and temporal decay.
 """
 
 from __future__ import annotations
@@ -34,11 +34,20 @@ SURFACES = {
         "enriched_dir": "up_next_enriched",
         "classified_dir": "up_next_classified",
     },
+    "youtube_subscriptions": {
+        "key": "subscriptions",
+        "label": "Subscriptions",
+        "snapshot_dir": "subscriptions_snapshots",
+        "enriched_dir": "subscriptions_enriched",
+        "classified_dir": "subscriptions_classified",
+    },
 }
 
 CONTEXT_FIELDS = (
     "collection_session_id",
     "extraction_mode",
+    "extraction_version",
+    "extraction_diagnostics",
     "parent_video_id",
     "parent_title",
     "parent_channel",
@@ -46,6 +55,7 @@ CONTEXT_FIELDS = (
     "source_home_captured_at",
     "sample_context",
     "replay_context",
+    "subscription_channels",
     "page_url",
 )
 
@@ -102,7 +112,11 @@ def inject_context(path: Path, profile: dict, source_payload: dict) -> None:
     for key in CONTEXT_FIELDS:
         if key in source_payload:
             payload[key] = source_payload.get(key)
-    payload["surface_context"] = {key: source_payload.get(key) for key in CONTEXT_FIELDS if key in source_payload}
+    payload["surface_context"] = {
+        key: source_payload.get(key)
+        for key in CONTEXT_FIELDS
+        if key in source_payload
+    }
     write_json(path, payload)
 
 
@@ -115,10 +129,14 @@ def main() -> None:
     classifier = repo_root / "scripts" / "classification" / "classify_homepage_v2.py"
     enricher = repo_root / "scripts" / "enrichment" / "youtube_enrich.py"
     consolidated_builder = repo_root / "scripts" / "profile" / "build_consolidated_profile.py"
+    temporal_builder = repo_root / "scripts" / "profile" / "build_temporal_profile.py"
 
     roots = [profile_root, library_root, session_root]
     for config in SURFACES.values():
-        roots.extend(repo_root / "data" / config[key] for key in ("snapshot_dir", "enriched_dir", "classified_dir"))
+        roots.extend(
+            repo_root / "data" / config[key]
+            for key in ("snapshot_dir", "enriched_dir", "classified_dir")
+        )
     for folder in roots:
         folder.mkdir(parents=True, exist_ok=True)
 
@@ -137,7 +155,7 @@ def main() -> None:
                     "collection_session_id": session_id,
                     "profile": profile,
                     "created_at": datetime.now(timezone.utc).isoformat(),
-                    "surfaces": {"home": [], "up_next": []},
+                    "surfaces": {"home": [], "up_next": [], "subscriptions": []},
                 }
             session["profile"] = profile
             session["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -152,31 +170,46 @@ def main() -> None:
             if path.exists():
                 payload = json.loads(path.read_text(encoding="utf-8"))
             else:
-                payload = {"version": "1.0.0", "profiles": []}
-            profiles = [row for row in payload.get("profiles", []) if row.get("profile_id") != profile["profile_id"]]
+                payload = {"version": "1.1.0", "profiles": []}
+            profiles = [
+                row
+                for row in payload.get("profiles", [])
+                if row.get("profile_id") != profile["profile_id"]
+            ]
             interests = current_profile.get("interest_weights") or []
-            profiles.append({
-                "profile_id": profile["profile_id"],
-                "profile_short_id": profile["profile_short_id"],
-                "profile_label": profile["profile_label"],
-                "behavior_profile_name": current_profile.get("behavior_profile_name"),
-                "certainty_score": current_profile.get("certainty_score"),
-                "top_interests": [
-                    {"id": row.get("id"), "name_vi": row.get("name_vi"), "weight": row.get("predicted_weight")}
-                    for row in interests[:4]
-                ],
-                "updated_at": current_profile.get("updated_at"),
-                "report_path": str(report_path.relative_to(repo_root)),
-                "library_path": str(library_path.relative_to(repo_root)),
-            })
-            profiles.sort(key=lambda row: str(row.get("profile_label") or row.get("profile_short_id") or ""))
+            temporal = current_profile.get("temporal_profile") or {}
+            profiles.append(
+                {
+                    "profile_id": profile["profile_id"],
+                    "profile_short_id": profile["profile_short_id"],
+                    "profile_label": profile["profile_label"],
+                    "behavior_profile_name": current_profile.get("behavior_profile_name"),
+                    "certainty_score": current_profile.get("certainty_score"),
+                    "daily_observation_count": temporal.get("daily_observation_count"),
+                    "top_interests": [
+                        {
+                            "id": row.get("id"),
+                            "name_vi": row.get("name_vi"),
+                            "weight": row.get("predicted_weight"),
+                            "trend_state": row.get("trend_state"),
+                        }
+                        for row in interests[:4]
+                    ],
+                    "updated_at": current_profile.get("updated_at"),
+                    "report_path": str(report_path.relative_to(repo_root)),
+                    "library_path": str(library_path.relative_to(repo_root)),
+                }
+            )
+            profiles.sort(
+                key=lambda row: str(row.get("profile_label") or row.get("profile_short_id") or "")
+            )
             payload["profiles"] = profiles
             payload["updated_at"] = datetime.now(timezone.utc).isoformat()
             write_json(path, payload)
         return path
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "YouTubeLibraryBridge/0.7"
+        server_version = "YouTubeLibraryBridge/0.8"
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -222,7 +255,10 @@ def main() -> None:
             config = SURFACES.get(source)
             items = payload.get("items")
             if not config or not isinstance(items, list):
-                self._json_response(400, {"error": "invalid_snapshot_schema", "allowed_sources": sorted(SURFACES)})
+                self._json_response(
+                    400,
+                    {"error": "invalid_snapshot_schema", "allowed_sources": sorted(SURFACES)},
+                )
                 return
             if source == "youtube_up_next" and not payload.get("parent_video_id"):
                 self._json_response(400, {"error": "missing_parent_video_id"})
@@ -245,9 +281,15 @@ def main() -> None:
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")[:-3]
             if source == "youtube_home":
                 base = f"home_{timestamp}"
+            elif source == "youtube_subscriptions":
+                base = f"subscriptions_{timestamp}"
             else:
                 parent = safe_token(payload.get("parent_video_id"), 16)
-                replay = payload.get("replay_context") if isinstance(payload.get("replay_context"), dict) else {}
+                replay = (
+                    payload.get("replay_context")
+                    if isinstance(payload.get("replay_context"), dict)
+                    else {}
+                )
                 try:
                     replay_index = int(replay.get("replay_index") or 0)
                 except (TypeError, ValueError):
@@ -264,26 +306,49 @@ def main() -> None:
             enrichment_status = "skipped"
             if not args.no_enrich and os.environ.get("YOUTUBE_API_KEY") and items:
                 try:
-                    run_command([sys.executable, str(enricher), str(snapshot_path), "--output", str(enriched_path)], repo_root)
+                    run_command(
+                        [
+                            sys.executable,
+                            str(enricher),
+                            str(snapshot_path),
+                            "--output",
+                            str(enriched_path),
+                        ],
+                        repo_root,
+                    )
                     classification_input = enriched_path
                     enrichment_status = "ok"
                 except subprocess.CalledProcessError as exc:
                     enrichment_status = f"failed:{exc.returncode}"
-                    print(f"Warning: {config['label']} API enrichment failed; using surface-visible data.")
+                    print(
+                        f"Warning: {config['label']} API enrichment failed; using surface-visible data."
+                    )
 
             classified_value = None
-            if not args.no_classify:
+            if not args.no_classify and items:
                 try:
-                    run_command([sys.executable, str(classifier), str(classification_input), "--output", str(classified_path)], repo_root)
+                    run_command(
+                        [
+                            sys.executable,
+                            str(classifier),
+                            str(classification_input),
+                            "--output",
+                            str(classified_path),
+                        ],
+                        repo_root,
+                    )
                     inject_context(classified_path, profile, payload)
                     classified_value = str(classified_path.relative_to(repo_root))
                 except subprocess.CalledProcessError as exc:
-                    self._json_response(500, {
-                        "error": "classification_failed",
-                        "source": source,
-                        "snapshot_path": str(snapshot_path.relative_to(repo_root)),
-                        "returncode": exc.returncode,
-                    })
+                    self._json_response(
+                        500,
+                        {
+                            "error": "classification_failed",
+                            "source": source,
+                            "snapshot_path": str(snapshot_path.relative_to(repo_root)),
+                            "returncode": exc.returncode,
+                        },
+                    )
                     return
 
             entry = {
@@ -293,30 +358,45 @@ def main() -> None:
                 "item_count": len(items),
                 "captured_at": payload.get("captured_at"),
             }
-            for key in ("parent_video_id", "parent_title", "parent_home_position", "sample_context", "replay_context"):
+            for key in (
+                "parent_video_id",
+                "parent_title",
+                "parent_home_position",
+                "sample_context",
+                "replay_context",
+                "extraction_version",
+            ):
                 if key in payload:
                     entry[key] = payload.get(key)
+            if source == "youtube_subscriptions":
+                entry["subscription_channel_count"] = len(payload.get("subscription_channels") or [])
             index_path = update_session_index(profile, session_id, source, entry)
 
             print(
                 f"[{profile['profile_label']}:{profile['profile_short_id']}] {config['label']} "
                 f"{len(items)} items -> {snapshot_path.relative_to(repo_root)}"
             )
-            self._json_response(200, {
-                "ok": True,
-                "source": source,
-                "surface": config["key"],
-                "profile_id": profile["profile_id"],
-                "profile_short_id": profile["profile_short_id"],
-                "profile_label": profile["profile_label"],
-                "collection_session_id": session_id,
-                "item_count": len(items),
-                "snapshot_path": str(snapshot_path.relative_to(repo_root)),
-                "classified_path": classified_value,
-                "enrichment": enrichment_status,
-                "session_index_path": str(index_path.relative_to(repo_root)),
-                "profile_report_status": "deferred_to_session_finalize",
-            })
+            self._json_response(
+                200,
+                {
+                    "ok": True,
+                    "source": source,
+                    "surface": config["key"],
+                    "profile_id": profile["profile_id"],
+                    "profile_short_id": profile["profile_short_id"],
+                    "profile_label": profile["profile_label"],
+                    "collection_session_id": session_id,
+                    "item_count": len(items),
+                    "subscription_channel_count": len(payload.get("subscription_channels") or [])
+                    if source == "youtube_subscriptions"
+                    else None,
+                    "snapshot_path": str(snapshot_path.relative_to(repo_root)),
+                    "classified_path": classified_value,
+                    "enrichment": enrichment_status,
+                    "session_index_path": str(index_path.relative_to(repo_root)),
+                    "profile_report_status": "deferred_to_session_finalize",
+                },
+            )
 
         def _handle_finalize(self) -> None:
             payload = self._read_payload()
@@ -329,7 +409,10 @@ def main() -> None:
                 return
             index_path = session_index_path(profile, session_id)
             if not index_path.exists():
-                self._json_response(404, {"error": "session_not_found", "collection_session_id": session_id})
+                self._json_response(
+                    404,
+                    {"error": "session_not_found", "collection_session_id": session_id},
+                )
                 return
 
             short_id = profile["profile_short_id"]
@@ -337,54 +420,116 @@ def main() -> None:
             current_html = profile_root / f"profile_{short_id}__current.profile.html"
             library_json = library_root / f"profile_{short_id}.json"
             history_jsonl = library_root / f"profile_{short_id}.history.jsonl"
+            daily_dir = library_root / "daily" / f"profile_{short_id}"
+
+            token = safe_token(session_id, 64)
+            session_profile_json = session_root / f"profile_{short_id}__{token}.session.profile.json"
+            session_profile_html = session_root / f"profile_{short_id}__{token}.session.profile.html"
 
             try:
-                run_command([
-                    sys.executable,
-                    str(consolidated_builder),
-                    str(index_path),
-                    "--json-output", str(current_json),
-                    "--html-output", str(current_html),
-                    "--library-output", str(library_json),
-                    "--history-output", str(history_jsonl),
-                ], repo_root)
+                run_command(
+                    [
+                        sys.executable,
+                        str(consolidated_builder),
+                        str(index_path),
+                        "--json-output",
+                        str(session_profile_json),
+                        "--html-output",
+                        str(session_profile_html),
+                        "--library-output",
+                        str(session_profile_json),
+                    ],
+                    repo_root,
+                )
             except subprocess.CalledProcessError as exc:
-                self._json_response(500, {"error": "consolidated_profile_failed", "returncode": exc.returncode})
+                self._json_response(
+                    500,
+                    {"error": "session_profile_failed", "returncode": exc.returncode},
+                )
                 return
+
+            temporal_command = [
+                sys.executable,
+                str(temporal_builder),
+                str(session_profile_json),
+                str(index_path),
+                "--json-output",
+                str(current_json),
+                "--html-output",
+                str(current_html),
+                "--library-output",
+                str(library_json),
+                "--history-output",
+                str(history_jsonl),
+                "--daily-dir",
+                str(daily_dir),
+            ]
+            if library_json.exists():
+                temporal_command.extend(["--previous-profile", str(library_json)])
+
+            try:
+                run_command(temporal_command, repo_root)
+            except subprocess.CalledProcessError as exc:
+                self._json_response(
+                    500,
+                    {"error": "temporal_profile_failed", "returncode": exc.returncode},
+                )
+                return
+
+            for temporary in (session_profile_json, session_profile_html):
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
             library_index = None
             try:
                 current_profile = json.loads(current_json.read_text(encoding="utf-8"))
                 behavior_name = current_profile.get("behavior_profile_name")
-                library_index = update_library_index(profile, current_profile, current_html, library_json)
+                temporal = current_profile.get("temporal_profile") or {}
+                library_index = update_library_index(
+                    profile,
+                    current_profile,
+                    current_html,
+                    library_json,
+                )
             except Exception as exc:
                 behavior_name = None
+                temporal = {}
                 print(f"Warning: profile library index update failed: {exc}")
 
-            self._json_response(200, {
-                "ok": True,
-                "profile_id": profile["profile_id"],
-                "profile_short_id": short_id,
-                "profile_label": profile["profile_label"],
-                "collection_session_id": session_id,
-                "behavior_profile_name": behavior_name,
-                "profile_json_path": str(current_json.relative_to(repo_root)),
-                "profile_html_path": str(current_html.relative_to(repo_root)),
-                "library_path": str(library_json.relative_to(repo_root)),
-                "library_index_path": str(library_index.relative_to(repo_root)) if library_index else None,
-                "history_path": str(history_jsonl.relative_to(repo_root)),
-            })
+            self._json_response(
+                200,
+                {
+                    "ok": True,
+                    "profile_id": profile["profile_id"],
+                    "profile_short_id": short_id,
+                    "profile_label": profile["profile_label"],
+                    "collection_session_id": session_id,
+                    "behavior_profile_name": behavior_name,
+                    "daily_observation_count": temporal.get("daily_observation_count"),
+                    "profile_json_path": str(current_json.relative_to(repo_root)),
+                    "profile_html_path": str(current_html.relative_to(repo_root)),
+                    "library_path": str(library_json.relative_to(repo_root)),
+                    "library_index_path": str(library_index.relative_to(repo_root))
+                    if library_index
+                    else None,
+                    "history_path": str(history_jsonl.relative_to(repo_root)),
+                    "daily_path": str(daily_dir.relative_to(repo_root)),
+                },
+            )
 
         def log_message(self, format: str, *values: object) -> None:
             print(f"[bridge] {self.address_string()} - {format % values}")
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"YouTube Library Recommendation Bridge v0.7: http://{args.host}:{args.port}")
-    print("Surfaces: Home + Up Next replay")
-    print("Reports: one consolidated current profile per browser profile")
+    print(f"YouTube Library Recommendation Bridge v0.8: http://{args.host}:{args.port}")
+    print("Surfaces: Home + Up Next replay + Subscriptions (read-only)")
+    print("Phase 5.5: daily history + temporal decay + trend states")
+    print("Reports: one longitudinal current profile per browser profile")
     print("Profile library: data/profile_library")
     print("Visual report: data/profile_reports/profile_<id>__current.profile.html")
-    print("Up Next collection is HTML-only; no navigation/player/playback")
+    print("Collectors are read-only; no navigation/player/playback/subscribe actions")
     if os.environ.get("YOUTUBE_API_KEY"):
         print("YouTube API enrichment: ENABLED")
     else:
