@@ -356,6 +356,8 @@ collectBtn.addEventListener('click', async () => {
     const upNextSamples = Math.max(0, Math.min(10, Number(document.getElementById('upNextSamples').value || 3)));
     const upNextReplays = Math.max(1, Math.min(10, Number(document.getElementById('upNextReplays').value || 3)));
     const upNextLimit = Math.max(5, Math.min(40, Number(document.getElementById('upNextLimit').value || 20)));
+    const shouldCollectSubscriptions = Boolean(document.getElementById('collectSubscriptions')?.checked);
+    const subscriptionLimit = Math.max(10, Math.min(100, Number(document.getElementById('subscriptionLimit')?.value || 60)));
 
     const homeExec = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: collectHomepage, args: [scrolls, delay] });
     const home = homeExec?.[0]?.result;
@@ -363,6 +365,35 @@ collectBtn.addEventListener('click', async () => {
     home.collector_profile = collectorProfile;
     home.collection_session_id = collectionSessionId;
     await postBridge('/collect', home);
+
+    let subscriptionVideos = 0;
+    let subscriptionChannels = 0;
+    let subscriptionError = null;
+    if (shouldCollectSubscriptions) {
+      setStatus(
+        `Profile: ${collectorProfile.profile_label} (${shortProfileId(collectorProfile.profile_id)})\n` +
+        `Home: ${home.item_count} video\nĐang đọc Subscriptions read-only...`
+      );
+      try {
+        const subExec = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: collectSubscriptionsReadOnly,
+          args: [subscriptionLimit]
+        });
+        const subscriptions = subExec?.[0]?.result;
+        if (!subscriptions || !Array.isArray(subscriptions.items)) throw new Error('Không lấy được Subscriptions payload.');
+        subscriptions.collector_profile = collectorProfile;
+        subscriptions.collection_session_id = collectionSessionId;
+        await postBridge('/collect', subscriptions);
+        subscriptionVideos = subscriptions.item_count || subscriptions.items.length;
+        subscriptionChannels = Array.isArray(subscriptions.subscription_channels)
+          ? subscriptions.subscription_channels.length
+          : 0;
+      } catch (error) {
+        subscriptionError = error;
+        console.warn('Subscriptions collection failed', error);
+      }
+    }
 
     const sampled = sampleWithoutReplacement(home.items.filter((x) => x?.video_id), upNextSamples);
     const totalRequests = sampled.length * upNextReplays;
@@ -374,7 +405,8 @@ collectBtn.addEventListener('click', async () => {
         requestSequence += 1;
         setStatus(
           `Profile: ${collectorProfile.profile_label} (${shortProfileId(collectorProfile.profile_id)})\n` +
-          `Home: ${home.item_count} video\nSeed ${seedIndex + 1}/${sampled.length} · replay ${replayIndex}/${upNextReplays}\n` +
+          `Home: ${home.item_count} · Sub: ${subscriptionVideos}/${subscriptionChannels} channels\n` +
+          `Seed ${seedIndex + 1}/${sampled.length} · replay ${replayIndex}/${upNextReplays}\n` +
           `Up Next request ${requestSequence}/${totalRequests}: ${parent.title}`
         );
         try {
@@ -407,16 +439,20 @@ collectBtn.addEventListener('click', async () => {
       }
     }
 
-    setStatus('Đang tổng hợp Home + Up Next thành một hồ sơ...');
+    setStatus('Đang cập nhật daily history + temporal profile...');
     const finalResult = await postBridge('/finalize', {
       collector_profile: collectorProfile,
       collection_session_id: collectionSessionId
     });
+    await chrome.storage.local.set({ lastDailyCollectionAt: new Date().toISOString() });
 
     setStatus(
       `Xong · ${collectorProfile.profile_label} (${shortProfileId(collectorProfile.profile_id)})\n` +
       `Hồ sơ: ${finalResult.behavior_profile_name || 'đang hình thành'}\n` +
-      `Home: ${home.item_count} · Up Next replay: ${success}/${totalRequests} · observations: ${totalUpNext}\n` +
+      `Daily history: ${finalResult.daily_observation_count || 1} ngày\n` +
+      `Home: ${home.item_count} · Sub videos/channels: ${subscriptionVideos}/${subscriptionChannels}\n` +
+      `Up Next replay: ${success}/${totalRequests} · observations: ${totalUpNext}\n` +
+      (subscriptionError ? `Subscriptions cảnh báo: ${subscriptionError.message}\n` : '') +
       (failures ? `Replay lỗi: ${failures}\n` : '') +
       `Report tổng hợp: ${finalResult.profile_html_path}\nLibrary: ${finalResult.library_path}`
     );
@@ -427,6 +463,8 @@ collectBtn.addEventListener('click', async () => {
   }
 });
 
-loadCollectorProfile().then((profile) => {
-  setStatus(`Profile: ${profile.profile_label} (${shortProfileId(profile.profile_id)})\nBridge cần chạy tại 127.0.0.1:8765.`);
+loadCollectorProfile().then(async (profile) => {
+  const stored = await chrome.storage.local.get(['lastDailyCollectionAt']);
+  const last = stored.lastDailyCollectionAt ? `\nLần cập nhật gần nhất: ${stored.lastDailyCollectionAt}` : '';
+  setStatus(`Profile: ${profile.profile_label} (${shortProfileId(profile.profile_id)})\nBridge cần chạy tại 127.0.0.1:8765.${last}`);
 }).catch((error) => setStatus(`Không khởi tạo được profile ID: ${error.message}`));
