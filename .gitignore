@@ -59,6 +59,14 @@ data/synthetic_viewers/*.jsonl
 !data/home_classified/.gitkeep
 !data/synthetic_viewers/.gitkeep
 
+# Android/Gradle local build artifacts.
+android_collector/.gradle/
+android_collector/.idea/
+android_collector/local.properties
+android_collector/**/build/
+*.apk
+*.aab
+
 # Python cache
 __pycache__/
 *.pyc
