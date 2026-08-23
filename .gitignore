@@ -5,6 +5,9 @@ data/browser_profile/
 data/home_snapshots/**/*.json
 data/home_enriched/**/*.json
 data/home_classified/**/*.json
+data/up_next_snapshots/**/*.json
+data/up_next_enriched/**/*.json
+data/up_next_classified/**/*.json
 data/profile_reports/**/*.json
 data/profile_reports/**/*.html
 
@@ -12,6 +15,9 @@ data/profile_reports/**/*.html
 data/home_snapshots/*.json
 data/home_enriched/*.json
 data/home_classified/*.json
+data/up_next_snapshots/*.json
+data/up_next_enriched/*.json
+data/up_next_classified/*.json
 data/profile_reports/*.json
 data/profile_reports/*.html
 
