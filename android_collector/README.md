@@ -1,38 +1,42 @@
 # Android YouTube Accessibility Collector
 
-Version: `0.1.1` (collector foundation)
+Version: `0.2.0`
 
 ## Goal
 
-Allow a consenting Android participant to contribute natural-use YouTube recommendation evidence without requiring manual collection each time.
+Allow a consenting Android participant to contribute natural-use YouTube recommendation evidence automatically.
 
 ```text
 participant enables AccessibilityService once
         ↓
 participant opens/uses YouTube normally
         ↓
-service receives YouTube accessibility events
+service reads bounded AccessibilityNodeInfo tree
         ↓
-read rootInActiveWindow / AccessibilityNodeInfo tree
+local JSONL snapshot
         ↓
-bounded local snapshot
+configured automatic upload
+        ↓
+central community_server.py
+        ↓
+raw Android ingest area
         ↓
 future Android parser/profile engine
-        ↓ sanitized summary
-community server
+        ↓
+sanitized community profile
+        ↓
+Creator Community Intelligence
 ```
 
 The collector is read-only. It does not call `performAction()`, `dispatchGesture()`, media-control APIs, or input injection.
 
 ## Scope restriction
 
-The service is statically restricted to:
+The AccessibilityService is restricted to:
 
 ```text
 com.google.android.youtube
 ```
-
-in `res/xml/accessibility_service_config.xml` and checks the package again at runtime.
 
 It listens only to:
 
@@ -44,38 +48,31 @@ TYPE_VIEW_SCROLLED
 
 and requests `canRetrieveWindowContent=true` plus `FLAG_REPORT_VIEW_IDS`.
 
-## Consent / Play policy
+## Consent
 
-This app is not declared as an accessibility tool for disability support. Before opening Android Accessibility Settings, the app shows a prominent disclosure and requires an affirmative button press. The service also refuses to collect until that local disclosure flag has been accepted.
-
-After the participant enables the service, collection is automatic whenever YouTube is active. The participant can pause/resume collection from the app.
+The app shows an AccessibilityService disclosure and requires an affirmative button press before opening Android Accessibility Settings. After the participant enables the service, collection is automatic whenever YouTube is active. Pause/resume remains available in the app.
 
 ## Snapshot contract
 
-Schema:
+Raw snapshot schema:
 
 ```text
 schemas/android_accessibility_snapshot.v1.schema.json
 ```
 
-Each snapshot contains:
+Automatic server envelope schema:
+
+```text
+schemas/android_snapshot_ingest.v1.schema.json
+```
+
+Each accepted snapshot contains bounded evidence such as:
 
 ```text
 captured_at
-source_package = com.google.android.youtube
-event_type
-surface_guess
-surface confidence/evidence
+surface_guess + confidence/evidence
 tree_signature
-bounded evidence nodes
-```
-
-Each evidence node may contain:
-
-```text
-text
-contentDescription
-viewIdResourceName
+text/contentDescription/viewIdResourceName
 className
 selected/clickable/scrollable flags
 child count
@@ -83,36 +80,91 @@ screen bounds
 depth
 ```
 
-Strings are length-limited and the traversal is capped at 450 retained nodes / depth 18.
+Traversal is capped at 450 retained nodes / depth 18.
 
-## Local-first data handling
+## Local storage first
 
-v1 keeps a canonical private JSONL copy in app-internal storage:
+Every accepted snapshot is written locally before network sync:
 
 ```text
 files/youtube_accessibility_snapshots/YYYY-MM-DD.jsonl
 ```
 
-For PC/ADB retrieval, the same accepted snapshot line is mirrored to app-specific external storage:
+It is also mirrored for ADB debugging to:
 
 ```text
 /sdcard/Android/data/com.youtube.library.collector/files/
   youtube_accessibility_snapshots/YYYY-MM-DD.jsonl
 ```
 
-This is not the public Downloads directory and raw node trees are **not** sent to the community server in v1.
+ADB and phone-side JSON export are now fallback/debug paths, not the normal production transport.
 
-The participant can still use the in-app fallback:
+## Automatic server sync
+
+Android `0.2.0` has app settings for:
 
 ```text
-Xuất snapshot JSONL hôm nay
+Server URL
+Project token
+Participant ID
+Profile slot
+Auto sync ON/OFF
+Development HTTP override
 ```
 
-but normal development/testing should use the ADB CMD bridge below so no phone-side file copying is required.
+The app generates a stable random `device_id` once.
 
-Daily caps + tree-signature deduplication reduce repeated captures caused by Android UI event noise.
+A participant who uses multiple project devices/profiles should reuse the same project `participant_id` when those devices belong to the same real person. This prevents community aggregation from incorrectly counting one human as multiple independent participants.
 
-Initial caps:
+Normal production configuration should use HTTPS. HTTP is exposed only as an explicit development/LAN override and sends data/token without transport encryption.
+
+After settings are saved:
+
+```text
+new accepted snapshot
+→ local snapshot
+→ local pending queue
+→ POST <server>/v1/android/snapshot
+```
+
+Pending queue:
+
+```text
+files/android_sync_queue/pending.jsonl
+```
+
+If network/server upload fails, the snapshot remains queued. The queue is retried on later captures, app launch, or AccessibilityService reconnect. Server-side `tree_signature` deduplication makes retries idempotent.
+
+## Central server
+
+The current central server module is:
+
+```text
+scripts/community/community_server.py
+```
+
+It now exposes two separate ingestion contracts:
+
+```text
+POST /v1/android/snapshot
+    raw bounded Android Accessibility evidence
+    → data/android_ingest/...
+
+POST /v1/profile
+    sanitized analyzed profile summary
+    → data/community_profiles/...
+    → rebuild Creator Community report
+```
+
+Raw Android snapshots do **not** directly change the Creator Dashboard. They first need the Android node parser/profile engine, then the resulting sanitized profile is submitted to `/v1/profile`.
+
+Central aggregation remains:
+
+```text
+scripts/community/build_community_report.py
+```
+
+## Initial daily caps
 
 ```text
 home            4/day
@@ -123,80 +175,31 @@ search          8/day
 unknown         6/day
 ```
 
-These are collector engineering defaults, not behavioral weights. Community aggregation remains participant-balanced.
+These limits control raw collection volume, not participant weighting.
 
-## ADB / CMD bridge
+## ADB fallback / development bridge
 
-PC tool:
+PC tools remain available:
 
 ```text
 scripts/android/android_bridge.py
 scripts/android/android_bridge.cmd
 ```
 
-Prerequisite: Android SDK Platform-Tools (`adb`) must be in `PATH`, or `ANDROID_HOME` / `ANDROID_SDK_ROOT` must point to the SDK.
-
-### USB workflow
-
-Enable Developer options + USB debugging on the test device, authorize the PC once, then:
+Examples:
 
 ```bat
 scripts\android\android_bridge.cmd devices
 scripts\android\android_bridge.cmd status
-scripts\android\android_bridge.cmd pull --today
-```
-
-Pulled snapshots go to:
-
-```text
-data/android_snapshots/<device-serial>/YYYY-MM-DD.jsonl
-```
-
-and are git-ignored.
-
-To automatically keep the PC copy current while the participant uses YouTube:
-
-```bat
-scripts\android\android_bridge.cmd watch
-```
-
-Default poll interval is 15 seconds. The bridge compares remote/local file size and only pulls when today's JSONL changes.
-
-Optional immediate inspection:
-
-```bat
 scripts\android\android_bridge.cmd pull --today --inspect
-scripts\android\android_bridge.cmd pull --today --inspect --show-text
-```
-
-### Multiple devices
-
-```bat
-scripts\android\android_bridge.cmd devices
-scripts\android\android_bridge.cmd --serial SERIAL status
-scripts\android\android_bridge.cmd --serial SERIAL watch
-```
-
-### Wireless debugging
-
-Android 11+ can pair ADB over Wi-Fi from Developer options → Wireless debugging.
-
-```bat
-scripts\android\android_bridge.cmd pair 192.168.1.50:PAIRING_PORT
-scripts\android\android_bridge.cmd connect 192.168.1.50:ADB_PORT
-scripts\android\android_bridge.cmd status
 scripts\android\android_bridge.cmd watch
 ```
 
-The pairing port and normal ADB connection port may be different. Wireless debugging should only be enabled on trusted networks/devices.
+Pulled raw snapshots go to `data/android_snapshots/` and are git-ignored.
 
-### Retrieval fallback
+## Current parser status
 
-The preferred transport is the app-specific external mirror. If that path cannot be pulled, `android_bridge.py` tries `adb exec-out run-as ...` against the canonical internal file. `run-as` normally works only for debuggable builds, so it is a development fallback rather than the primary design.
-
-## Surface detection
-
-`SurfaceDetector.kt` currently provides a provisional guess:
+Surface detection remains provisional:
 
 ```text
 home
@@ -207,92 +210,55 @@ search
 unknown
 ```
 
-using selected navigation labels, accessibility text/content descriptions and view IDs when available.
+A strict video-card parser is intentionally deferred until real Accessibility node fixtures are available from multiple devices/YouTube versions.
 
-This is deliberately marked provisional. Native YouTube accessibility trees can change between app versions/locales and may not map 1:1 to Android Views.
+The next data path is:
 
-### Validation sequence
+```text
+central Android raw ingest / ADB fixtures
+→ inspect stable node patterns
+→ node-to-video-card parser
+→ normalized Home / Watch / Subscriptions evidence
+→ Android daily/temporal profile
+→ community_profile_submission.v1
+→ Creator Community Intelligence
+```
 
-Before implementing a strict video-card parser:
+## Account/profile switching
 
-1. Install the app on at least 2 Android devices / YouTube versions.
-2. Enable the AccessibilityService.
-3. Naturally visit Home, Watch, Subscriptions, Shorts and Search.
-4. Run `scripts\android\android_bridge.cmd watch` on the PC.
-5. Inspect pulled snapshots locally with `scripts/android/inspect_accessibility_snapshots.py` or `pull --inspect --show-text`.
-6. Identify stable node patterns for video title/channel/metadata/recommendation sections.
-7. Add fixture-based parser tests.
-8. Only then map Android evidence into the same logical surfaces used by the browser profile engine.
-
-## Current limitation: account/profile switching
-
-Android v1 intentionally does not read Google account names/emails to identify in-app YouTube account switches. Therefore one app installation currently represents one Android collection slot.
-
-If a participant switches between multiple YouTube accounts in the same Android app, snapshots may mix. A later version should add an explicit non-sensitive local profile slot selector rather than scraping account identity.
+The collector does not scrape Google account names/emails. `profile_slot` is an explicit project label. If a participant switches multiple YouTube accounts inside one Android app without changing the project slot, evidence can mix.
 
 ## Build
 
-### GitHub Actions APK build
-
-The repository now has a real Android SDK build workflow:
+GitHub Android build workflow:
 
 ```text
 .github/workflows/android-apk.yml
 ```
 
-The workflow pins the build environment to:
-
-```text
-JDK 17
-Gradle 8.9
-Android SDK / compileSdk 35
-Android Gradle Plugin 8.7.3
-Kotlin 2.0.21
-```
-
-and executes:
-
-```text
-gradle -p android_collector --no-daemon --stacktrace :app:assembleDebug
-```
-
-A build is considered successful **only** when that workflow finishes green and verifies this file exists:
-
-```text
-android_collector/app/build/outputs/apk/debug/app-debug.apk
-```
-
-On success, GitHub Actions uploads an artifact named:
+A usable APK is considered available only when `:app:assembleDebug` succeeds and GitHub produces the artifact:
 
 ```text
 youtube-library-collector-debug
 ```
 
-containing:
+Current build pins:
 
 ```text
-youtube-library-collector-debug.apk
-SHA256SUMS.txt
-```
-
-Do not treat XML/schema/guardrail CI as proof that an APK was built. Those checks are separate from the Android APK workflow.
-
-### Local build
-
-Open `android_collector/` in Android Studio with JDK 17 and Android SDK 35, or use a compatible Gradle 8.9 installation:
-
-```text
-gradle -p android_collector :app:assembleDebug
+JDK 17
+Gradle 8.9
+Android SDK 35
+AGP 8.7.3
+Kotlin 2.0.21
 ```
 
 ## Next Android slice
 
 ```text
 successful APK build
-→ ADB-collected real node-tree fixtures
+→ configure central server auto sync
+→ receive real Android snapshots automatically
 → node-to-video-card parser
-→ Android daily surface profile
 → Android temporal profile
-→ community_profile_submission.v1
-→ automatic sanitized community sync
+→ sanitized /v1/profile submission
 ```
