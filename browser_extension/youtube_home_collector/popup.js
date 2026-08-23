@@ -1,5 +1,7 @@
 const statusEl = document.getElementById('status');
 const collectBtn = document.getElementById('collect');
+const profileLabelEl = document.getElementById('profileLabel');
+const profileIdEl = document.getElementById('profileId');
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -8,8 +10,59 @@ function setStatus(text) {
 function filenameTimestamp() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}_${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1))}${pad(d.getUTCDate())}_${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
 }
+
+function createProfileId() {
+  if (globalThis.crypto?.randomUUID) return `browser-${crypto.randomUUID()}`;
+  return `browser-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function shortProfileId(profileId) {
+  return String(profileId || '').replace(/^browser-/, '').slice(0, 8) || 'unknown';
+}
+
+function safeFolderName(value) {
+  const normalized = String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return normalized || 'profile';
+}
+
+async function loadCollectorProfile() {
+  const stored = await chrome.storage.local.get(['collectorProfileId', 'collectorProfileLabel']);
+  let profileId = stored.collectorProfileId;
+  if (!profileId) {
+    profileId = createProfileId();
+    await chrome.storage.local.set({ collectorProfileId: profileId });
+  }
+
+  const profileLabel = String(stored.collectorProfileLabel || '').trim();
+  profileIdEl.textContent = profileId;
+  if (document.activeElement !== profileLabelEl) profileLabelEl.value = profileLabel;
+
+  return {
+    profile_id: profileId,
+    profile_label: profileLabel || `Profile ${shortProfileId(profileId)}`,
+    identity_source: 'browser_extension_local_storage'
+  };
+}
+
+async function saveProfileLabel() {
+  const value = String(profileLabelEl.value || '').trim().slice(0, 60);
+  await chrome.storage.local.set({ collectorProfileLabel: value });
+  return value;
+}
+
+profileLabelEl.addEventListener('change', async () => {
+  await saveProfileLabel();
+  const profile = await loadCollectorProfile();
+  setStatus(`Profile: ${profile.profile_label} (${shortProfileId(profile.profile_id)})\nBridge cần chạy tại 127.0.0.1:8765.`);
+});
 
 async function collectHomepage(scrolls, delayMs) {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -165,7 +218,9 @@ async function collectHomepage(scrolls, delayMs) {
 async function fallbackDownload(payload) {
   const json = JSON.stringify(payload, null, 2);
   const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
-  const filename = `youtube_library/home_${filenameTimestamp()}.json`;
+  const profile = payload.collector_profile || {};
+  const folder = `${safeFolderName(profile.profile_label)}__${shortProfileId(profile.profile_id)}`;
+  const filename = `youtube_library/${folder}/home_${filenameTimestamp()}.json`;
   await chrome.downloads.download({ url: dataUrl, filename, saveAs: false });
   return filename;
 }
@@ -175,6 +230,9 @@ collectBtn.addEventListener('click', async () => {
   setStatus('Đang đọc YouTube Home...');
 
   try {
+    await saveProfileLabel();
+    const collectorProfile = await loadCollectorProfile();
+
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id || !tab.url?.startsWith('https://www.youtube.com/')) {
       throw new Error('Hãy mở YouTube Home trong tab hiện tại trước.');
@@ -193,8 +251,12 @@ collectBtn.addEventListener('click', async () => {
     if (!payload || !Array.isArray(payload.items)) {
       throw new Error('Không lấy được dữ liệu Home.');
     }
+    payload.collector_profile = collectorProfile;
 
-    setStatus(`Đã lấy ${payload.item_count} video. Đang gửi về local bridge...`);
+    setStatus(
+      `Profile: ${collectorProfile.profile_label} (${shortProfileId(collectorProfile.profile_id)})\n` +
+      `Đã lấy ${payload.item_count} video. Đang gửi về local bridge...`
+    );
 
     try {
       const response = await fetch('http://127.0.0.1:8765/collect', {
@@ -206,13 +268,16 @@ collectBtn.addEventListener('click', async () => {
       if (!response.ok) throw new Error(`Bridge HTTP ${response.status}`);
       const result = await response.json();
       setStatus(
-        `Xong: ${payload.item_count} video\n` +
+        `Xong · ${result.profile_label || collectorProfile.profile_label} (${result.profile_short_id || shortProfileId(collectorProfile.profile_id)})\n` +
+        `${payload.item_count} video\n` +
         `Snapshot: ${result.snapshot_path}\n` +
-        `Classified: ${result.classified_path || 'disabled'}`
+        `Classified: ${result.classified_path || 'disabled'}\n` +
+        `Report: ${result.profile_html_path || 'disabled'}`
       );
     } catch (bridgeError) {
       const file = await fallbackDownload(payload);
       setStatus(
+        `Profile: ${collectorProfile.profile_label} (${shortProfileId(collectorProfile.profile_id)})\n` +
         `Đã lấy ${payload.item_count} video nhưng local bridge chưa chạy.\n` +
         `Đã tải fallback: Downloads/${file}\n` +
         `Lỗi bridge: ${bridgeError.message}`
@@ -223,4 +288,10 @@ collectBtn.addEventListener('click', async () => {
   } finally {
     collectBtn.disabled = false;
   }
+});
+
+loadCollectorProfile().then((profile) => {
+  setStatus(`Profile: ${profile.profile_label} (${shortProfileId(profile.profile_id)})\nBridge cần chạy tại 127.0.0.1:8765.`);
+}).catch((error) => {
+  setStatus(`Không khởi tạo được profile ID: ${error.message}`);
 });
