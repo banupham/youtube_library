@@ -27,16 +27,18 @@ object AndroidAutoSync {
             put("profile_slot", config.profileSlot)
             put("sent_at", Instant.now().toString())
             put("snapshot", snapshot.toJson())
-        }
+        }.toString()
 
-        synchronized(queueLock) {
-            val rows = readPending(appContext).toMutableList()
-            rows.add(envelope.toString())
-            while (rows.size > MAX_PENDING) rows.removeAt(0)
-            writePending(appContext, rows)
-            updatePendingCount(appContext, rows.size)
+        executor.execute {
+            synchronized(queueLock) {
+                val rows = readPending(appContext).toMutableList()
+                rows.add(envelope)
+                while (rows.size > MAX_PENDING) rows.removeAt(0)
+                writePending(appContext, rows)
+                updatePendingCount(appContext, rows.size)
+            }
+            flush(appContext)
         }
-        flushAsync(appContext)
     }
 
     fun flushAsync(context: Context) {
