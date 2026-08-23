@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtube-library.local/schemas/android_accessibility_snapshot.v1.schema.json",
+  "title": "Android YouTube Accessibility Snapshot",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "platform",
+    "source_package",
+    "captured_at",
+    "extraction_mode",
+    "surface_guess",
+    "node_count",
+    "nodes"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "platform": {"const": "android"},
+    "source_package": {"const": "com.google.android.youtube"},
+    "captured_at": {"type": "string"},
+    "extraction_mode": {"const": "android_accessibility_node_tree_read_only"},
+    "event_type": {"type": ["integer", "null"]},
+    "surface_guess": {
+      "type": "object",
+      "required": ["surface", "confidence", "evidence"],
+      "properties": {
+        "surface": {
+          "enum": ["home", "watch", "subscriptions", "shorts", "search", "unknown"]
+        },
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "evidence": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {"type": "string", "maxLength": 160}
+        }
+      },
+      "additionalProperties": false
+    },
+    "tree_signature": {"type": "string", "maxLength": 64},
+    "node_count": {"type": "integer", "minimum": 0, "maximum": 500},
+    "nodes": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "required": ["depth", "class_name", "clickable", "selected", "scrollable", "bounds"],
+        "properties": {
+          "depth": {"type": "integer", "minimum": 0, "maximum": 32},
+          "text": {"type": ["string", "null"], "maxLength": 200},
+          "content_description": {"type": ["string", "null"], "maxLength": 320},
+          "view_id": {"type": ["string", "null"], "maxLength": 180},
+          "class_name": {"type": "string", "maxLength": 160},
+          "clickable": {"type": "boolean"},
+          "selected": {"type": "boolean"},
+          "scrollable": {"type": "boolean"},
+          "child_count": {"type": "integer", "minimum": 0},
+          "bounds": {
+            "type": "object",
+            "required": ["left", "top", "right", "bottom"],
+            "properties": {
+              "left": {"type": "integer"},
+              "top": {"type": "integer"},
+              "right": {"type": "integer"},
+              "bottom": {"type": "integer"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
