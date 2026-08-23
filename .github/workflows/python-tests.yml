@@ -14,7 +14,7 @@ jobs:
           python-version: "3.11"
       - name: Compile project Python modules
         run: |
-          python -m py_compile scripts/homepage/home_bridge.py
+          python -m py_compile scripts/community/browser_pipeline.py
           python -m py_compile scripts/profile/build_consolidated_profile.py
           python -m py_compile scripts/profile/build_temporal_profile.py
           python -m py_compile scripts/viewer/generate_viewers.py
