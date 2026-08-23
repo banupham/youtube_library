@@ -6,30 +6,28 @@
 
 # 1. Kiến trúc canonical
 
-Trục chính của dự án là một **consenting distributed profile panel**:
+Trục chính của dự án là một **consenting distributed profile panel** từ nhiều participant/device thật.
 
 ```text
-PARTICIPANT A                 PARTICIPANT B                 PARTICIPANT C
-browser / future Android     browser / future Android     browser / future Android
-      │                             │                             │
-      ▼                             ▼                             ▼
-PASSIVE READ-ONLY COLLECTOR   PASSIVE READ-ONLY COLLECTOR   PASSIVE READ-ONLY COLLECTOR
-      │                             │                             │
-      ▼                             ▼                             ▼
-LOCAL PROFILE ENGINE          LOCAL PROFILE ENGINE          LOCAL PROFILE ENGINE
-Home / Up Next / Subs         Home / Up Next / Subs         Home / Up Next / Subs
-Today / 7d / 30d / Long       Today / 7d / 30d / Long       Today / 7d / 30d / Long
-      │                             │                             │
-      └──────── sanitized profile summaries ─────────────────────┘
-                                    │
-                                    ▼
-                         COMMUNITY INGESTION SERVER
-                                    │
-                                    ▼
-                     PARTICIPANT-BALANCED AGGREGATION
-                                    │
-                                    ▼
-                         CREATOR COMMUNITY INTELLIGENCE
+PARTICIPANT A                  PARTICIPANT B                  PARTICIPANT C
+Browser + Android             Browser + Android             Browser + Android
+      │                              │                              │
+      ▼                              ▼                              ▼
+PASSIVE READ-ONLY COLLECTORS   PASSIVE READ-ONLY COLLECTORS   PASSIVE READ-ONLY COLLECTORS
+      │                              │                              │
+      ▼                              ▼                              ▼
+LOCAL PROFILE STATE            LOCAL PROFILE STATE            LOCAL PROFILE STATE
+      │                              │                              │
+      └──────────── sanitized profile summaries ───────────────────┘
+                                     │
+                                     ▼
+                          COMMUNITY INGESTION SERVER
+                                     │
+                                     ▼
+                      PARTICIPANT-BALANCED AGGREGATION
+                                     │
+                                     ▼
+                          CREATOR COMMUNITY INTELLIGENCE
 ```
 
 Creator cuối cùng cần thấy:
@@ -52,12 +50,12 @@ Không gọi các score này là xác suất YouTube recommendation/view.
 
 ```text
 Participant A
-├── Profile A1
-├── Profile A2
-└── Profile A3
+├── Browser Profile A1
+├── Browser Profile A2
+└── Android Slot A3
 
 Participant B
-└── Profile B1
+└── Browser Profile B1
 ```
 
 Không được coi ví dụ trên là 4 người độc lập.
@@ -66,11 +64,11 @@ Community engine dùng **participant-balanced weighting**:
 
 ```text
 mỗi participant = cùng một tổng community weight
-nhiều profile cùng participant
-→ chia tổng weight đó theo profile quality/certainty
+nhiều profile/device slots cùng participant
+→ chia tổng weight theo profile quality/certainty
 ```
 
-Creator report luôn hiển thị cả:
+Creator report luôn hiển thị:
 
 ```text
 participant_count
@@ -81,173 +79,52 @@ usable_profile_count
 
 ---
 
-# 3. Dữ liệu thật hiện tại
+# 3. Browser collector — extension 0.6.1
 
-Observed data là recommendation/affinity data thật YouTube trả về trên profile participant tự sử dụng.
-
-Browser collector hiện đóng góp:
-
-```text
-Home recommendation exposure
-Up Next recommendation exposure
-Subscriptions feed / subscribed-channel affinity
-Daily longitudinal evolution
-```
-
-YouTube Data API enrichment có thể bổ sung:
-
-```text
-description
-tags
-categoryId
-topicDetails
-publishedAt
-views
-likes
-comments
-```
-
-Raw observations là panel evidence, không mặc định đại diện toàn bộ YouTube audience.
-
----
-
-# 4. Browser passive collector — extension 0.6.1
-
-## 4.1 Auto-on participation model
-
-Participant đã biết và chủ động tham gia cộng đồng khi cài collector. Vì vậy runtime không còn checkbox opt-in.
+## Auto-on
 
 ```text
 install / reload extension
 → passive collection mặc định ON
 → participant mở youtube.com
-→ collector tự kích hoạt cho route hiện tại
+→ collector tự chạy trên route hiện tại
 ```
 
-Nếu participant muốn ngừng tạm thời, popup chỉ có:
+Popup chỉ có pause/resume; không còn runtime opt-in checkbox.
+
+## Natural-use rule
+
+Collector không tự:
 
 ```text
-Tạm dừng thu thập
-Tiếp tục thu thập
+open tab/video
+play
+click
+like/comment/subscribe
+auto-scroll trong passive mode
 ```
 
-Trạng thái `paused=false/true` được lưu local và giữ qua browser restart.
+Nó chỉ đọc những surface participant tự mở.
 
-## 4.2 Natural-use rule
-
-Collector KHÔNG:
+Current browser evidence:
 
 ```text
-tự mở tab
-tự mở video
-tự play
-tự click
-tự like/comment/subscribe
-tự auto-scroll trong passive mode
+Home DOM
+natural Watch-page Up Next DOM
+Subscriptions / Channels DOM
+manual fallback/replay chỉ dùng debug
 ```
 
-Collector chỉ đọc surface participant tự truy cập.
-
-### Home
-
-```text
-participant tự mở Home / tự scroll
-→ sau thời gian chờ collector đọc video cards đã load
-```
-
-Daily cap ban đầu:
-
-```text
-Home <= 2 passive snapshots/day
-```
-
-### Up Next
-
-```text
-participant tự mở /watch?v=...
-→ collector đọc recommendation DOM ở secondary column
-```
-
-Không random watch-page/replay trong passive mode.
-
-Daily cap:
-
-```text
-Up Next <= 8 naturally opened watch pages/day
-```
-
-### Subscriptions
-
-Nếu participant tự mở:
-
-```text
-/feed/subscriptions
-/feed/channels
-```
-
-collector đọc read-only snapshot tương ứng.
-
-Daily cap:
-
-```text
-Subscriptions <= 1/day
-Channels <= 1/day
-```
-
-## 4.3 Manual fallback
-
-Pipeline manual cũ vẫn giữ chỉ để debug/test:
-
-```text
-manual Home scroll
-manual Subscriptions fetch
-random Home seed → watch HTML replay
-```
-
-Manual replay không phải nguồn natural panel ưu tiên.
-
----
-
-# 5. Local Profile Engine — Phase 5.5
-
-Mỗi participant/device xử lý profile local trước:
+Browser raw evidence đi qua local Python profile engine:
 
 ```text
 Home + Up Next + Subscriptions
-↓
-API enrichment
-↓
-classifier
-↓
-session profile
-↓
-daily observation
-↓
-Today / 7d / 30d / Long-term
-↓
-trend state
-↓
-current longitudinal profile
-```
-
-Files:
-
-```text
-data/profile_library/profile_<id>.json
-data/profile_library/profile_<id>.history.jsonl
-data/profile_library/daily/profile_<id>/YYYY-MM-DD.json
-```
-
-Trend states:
-
-```text
-baseline
-emerging
-rising
-stable
-cooling
-dormant
-revived
+→ API enrichment
+→ classifier
+→ daily observation
+→ Today / 7d / 30d / Long-term
+→ baseline/emerging/rising/stable/cooling/dormant/revived
+→ current longitudinal profile
 ```
 
 Current versions:
@@ -259,13 +136,187 @@ longitudinal profile analysis      2.5.0
 session creator profile            2.1.0
 ```
 
-Phase 5.5 validation nhiều ngày tiếp tục song song.
+---
+
+# 4. Android collector — AccessibilityService v0.1.0
+
+Android chính thức là một collector trong cùng hệ sinh thái.
+
+```text
+participant cài Android collector
+→ app hiển thị disclosure về AccessibilityService
+→ participant bấm Đồng ý & mở Cài đặt trợ năng
+→ participant bật service một lần
+→ từ đó service tự chạy khi YouTube native app đang mở
+```
+
+YouTube package bị khóa cứng:
+
+```text
+com.google.android.youtube
+```
+
+Android collector sử dụng:
+
+```text
+AccessibilityService
+rootInActiveWindow
+AccessibilityNodeInfo tree
+FLAG_REPORT_VIEW_IDS
+```
+
+Service config:
+
+```text
+android_collector/app/src/main/res/xml/accessibility_service_config.xml
+```
+
+Events:
+
+```text
+TYPE_WINDOW_STATE_CHANGED
+TYPE_WINDOW_CONTENT_CHANGED
+TYPE_VIEW_SCROLLED
+```
+
+Service chỉ đọc node tree. Không có code:
+
+```text
+performAction()
+dispatchGesture()
+GLOBAL_ACTION_*
+ACTION_CLICK
+ACTION_SCROLL_*
+ACTION_SET_TEXT
+```
+
+## Android privacy boundary
+
+Android v0.1 không đọc package ngoài YouTube và không gửi raw node tree lên community server.
+
+Snapshot chỉ lưu app-internal:
+
+```text
+files/youtube_accessibility_snapshots/YYYY-MM-DD.jsonl
+```
+
+Mỗi snapshot dùng schema:
+
+```text
+schemas/android_accessibility_snapshot.v1.schema.json
+```
+
+Fields chính:
+
+```text
+captured_at
+source_package
+surface_guess + confidence/evidence
+tree_signature
+bounded accessibility nodes
+```
+
+Node evidence có thể gồm:
+
+```text
+text
+contentDescription
+viewIdResourceName
+className
+selected/clickable/scrollable
+child_count
+bounds
+depth
+```
+
+Traversal cap:
+
+```text
+<= 450 retained nodes
+<= depth 18
+```
+
+Strings được length-limit. Snapshot trùng tree signature bị bỏ qua.
+
+Initial daily caps:
+
+```text
+home            4/day
+watch          24/day
+subscriptions   4/day
+shorts         12/day
+search          8/day
+unknown         6/day
+```
+
+Raw count không làm participant có community weight lớn hơn vì aggregator vẫn participant-balanced.
+
+## Surface detector Android
+
+Current provisional surfaces:
+
+```text
+home
+watch
+subscriptions
+shorts
+search
+unknown
+```
+
+Detector hiện chỉ là heuristic từ selected labels / text / contentDescription / view IDs.
+
+Không hard-code video-card parser trước khi có fixture thật vì native YouTube Accessibility tree thay đổi theo app version/locale và không bảo đảm map 1:1 vào Android Views.
+
+## Android validation flow — NEXT
+
+```text
+2+ Android devices / YouTube versions
+→ tự dùng Home/Watch/Subscriptions/Shorts/Search
+→ lấy một số node-tree snapshots local
+→ inspect stable node/view-id/accessibility patterns
+→ fixture parser tests
+→ node tree → normalized video cards/surfaces
+→ Android daily profile
+→ sanitized community_profile_submission.v1
+→ automatic community sync
+```
+
+Tool inspect local export:
+
+```text
+scripts/android/inspect_accessibility_snapshots.py
+```
+
+Android current module:
+
+```text
+android_collector/
+├── app/src/main/AndroidManifest.xml
+├── app/src/main/res/xml/accessibility_service_config.xml
+├── app/src/main/java/com/youtube/library/collector/
+│   ├── MainActivity.kt
+│   ├── YouTubeAccessibilityService.kt
+│   ├── NodeTreeExtractor.kt
+│   ├── SurfaceDetector.kt
+│   ├── SnapshotModels.kt
+│   └── LocalSnapshotStore.kt
+└── README.md
+```
+
+### Android account-switch limitation
+
+v0.1 không scrape Google email/account name để định danh account trong YouTube app.
+
+Một app installation hiện được coi là một Android collection slot. Nếu participant thường xuyên switch nhiều YouTube account trong cùng app thì evidence có thể trộn. Future solution nên là explicit non-sensitive local slot selector, không scrape account identity.
+
+### Play policy note
+
+Collector không phải accessibility tool dành cho disability support (`isAccessibilityTool=false`). Vì dùng AccessibilityService cho mục đích data collection, Android app phải có prominent disclosure + affirmative consent nếu phân phối qua Google Play, cùng Accessibility declaration/Data Safety/Privacy Policy phù hợp.
 
 ---
 
-# 6. Community submission protocol
-
-Raw browser/account data không cần gửi lên server trung tâm.
+# 5. Community submission protocol
 
 Schema:
 
@@ -273,26 +324,22 @@ Schema:
 schemas/community_profile_submission.v1.schema.json
 ```
 
-Submitter:
+Browser submitter:
 
 ```text
 scripts/community/submit_profile.py
 ```
 
-Mỗi installation tự tạo random:
+Installation tạo random:
 
 ```text
 participant_id
 device_id
 ```
 
-lưu local tại:
+Không dùng Google account/email làm participant identity.
 
-```text
-data/collector_identity.json
-```
-
-Sanitized payload gửi:
+Sanitized community payload chỉ cần:
 
 ```text
 participant_id
@@ -307,95 +354,48 @@ keyword trends
 tag trends
 ```
 
-Protocol v1 không gửi:
+Protocol không gửi:
 
 ```text
-cookies
-password
+cookies/password
 Google email/account identifier
-profile display label
-raw Home/Up Next rows
 raw browsing/watch history
+raw Home/Up Next rows
+raw Android Accessibility node tree
 subscribed-channel names/list
 ```
 
+Android sẽ emit cùng `community_profile_submission.v1` sau khi node-to-video parser + Android local profile engine được validate.
+
 ---
 
-# 7. Automatic local → community sync
+# 6. Automatic local → community sync
 
-Module:
+Browser/current desktop flow:
 
 ```text
 scripts/community/collector_agent.py
 ```
 
-Flow:
-
 ```text
-watch data/profile_library/profile_*.json
-↓
-profile current thay đổi
-↓
-build sanitized submission
-↓
-POST community server
+watch profile_library/profile_*.json
+→ build sanitized submission
+→ POST central community server
 ```
 
-Có thể chạy:
-
-```bat
-set "YT_LIBRARY_COMMUNITY_ENDPOINT=https://YOUR_SERVER"
-set "YT_LIBRARY_COMMUNITY_TOKEN=YOUR_PROJECT_TOKEN"
-python scripts\community\collector_agent.py
-```
-
-Hoặc để agent launch local bridge:
-
-```bat
-python scripts\community\collector_agent.py --launch-bridge --endpoint https://YOUR_SERVER
-```
-
-Lưu ý: extension auto-start khi truy cập YouTube, nhưng Python local bridge/agent hiện vẫn cần chạy. Bước triển khai participant hoàn chỉnh về sau nên đóng gói bridge + sync agent thành background desktop service/startup app để participant không cần terminal.
-
----
-
-# 8. Central Community Server
-
-Module:
+Central server:
 
 ```text
 scripts/community/community_server.py
-```
-
-Endpoints:
-
-```text
 POST /v1/profile
-GET  /health
+GET /health
 ```
 
-Central storage/report:
-
-```text
-data/community_profiles/
-data/community_reports/current.json
-data/community_reports/current.html
-```
-
-Nếu deploy internet:
-
-```text
-HTTPS reverse proxy
-firewall
-auth token
-server-side backup
-```
-
-Không expose HTTP unauthenticated trực tiếp ra Internet.
+Android v0.1 chưa có `INTERNET` permission và chưa sync raw/accessibility snapshots. Network sync chỉ được thêm ở giai đoạn đã có sanitized Android profile output.
 
 ---
 
-# 9. Creator Community Aggregator
+# 7. Creator Community Aggregator
 
 Module:
 
@@ -403,13 +403,10 @@ Module:
 scripts/community/build_community_report.py
 ```
 
-Aggregate theo participant-balanced weighting.
-
 Mỗi content lane trả:
 
 ```text
 segment_key
-category
 matched_profile_count
 matched_participant_count
 profile_coverage_ratio
@@ -417,7 +414,6 @@ participant_coverage_ratio
 participant_balanced_coverage
 participant_balanced_interest
 trend_momentum
-trend profile counts
 community opportunity score
 fit band
 core keywords
@@ -426,43 +422,13 @@ expansion keywords
 top intent
 ```
 
-Ví dụ:
-
-```text
-science_technology::tutorial
-
-Participants matched: 8 / 12
-Profiles matched:     13 / 21
-
-Core keys:
-AI video
-creator workflow
-YouTube automation
-
-Core tags:
-ai video
-creator tools
-
-Expansion keys:
-agent workflow
-AI voice
-
-Fit band: strong
-```
-
-Ý nghĩa:
+Ý nghĩa đúng:
 
 > Hướng nội dung này có support rộng trong community panel đang quan sát.
 
-Không được diễn giải:
+Không được diễn giải thành xác suất YouTube impressions/views.
 
-> Có X% xác suất YouTube sẽ hiển thị/video sẽ có view.
-
----
-
-# 10. Creator UI contract
-
-UI chính:
+Creator UI chính về sau:
 
 ```text
 COMMUNITY OVERVIEW
@@ -477,52 +443,13 @@ TOP CONTENT OPPORTUNITIES
 #3 Lane C
 ```
 
-Mỗi lane hiển thị:
-
-```text
-participants matched
-profiles matched
-core keys
-core tags
-expansion keys
-trend breadth
-intent
-fit band
-```
-
 Drill-down mới hiển thị profile/surface/provenance chi tiết.
 
 ---
 
-# 11. Android direction
+# 8. Viewer Robot — sandbox phụ
 
-Android phải dùng cùng community submission protocol:
-
-```text
-Android collector
-↓
-local/sanitized profile state
-↓
-community_profile_submission.v1
-↓
-central server
-```
-
-Public YouTube Data API không expose personalized Home recommendation feed, nên chưa được tuyên bố Android native app có thể lấy Home/Up Next giống browser nếu chưa có legitimate read-only interface được validate.
-
-Không mặc định dùng Android Accessibility để scrape app YouTube vì có thể thu dữ liệu UI nhạy cảm ngoài phạm vi.
-
-Chi tiết:
-
-```text
-docs/DISTRIBUTED_PROFILE_COLLECTION.md
-```
-
----
-
-# 12. Viewer Robot — vai trò phụ
-
-Phase 6 synthetic code vẫn giữ:
+Synthetic code vẫn giữ:
 
 ```text
 schemas/viewer_robot.v1.schema.json
@@ -533,7 +460,7 @@ scripts/viewer/summarize_viewer_batch.py
 
 Nhưng synthetic viewers không làm tăng evidence thật và không rewrite community truth.
 
-Viewer Robot chỉ dùng cho:
+Chỉ dùng cho:
 
 ```text
 scenario testing
@@ -541,126 +468,83 @@ sensitivity testing
 offline simulation experiments
 ```
 
-Ưu tiên hiện tại là distributed natural collection + community intelligence.
+Ưu tiên hiện tại là distributed natural collection từ browser + Android và community intelligence.
 
 ---
 
-# 13. Current important modules
+# 9. Tests / guardrails
+
+CI:
 
 ```text
-# Browser collector
-browser_extension/youtube_home_collector/manifest.json        0.6.1
-browser_extension/youtube_home_collector/background.js
-browser_extension/youtube_home_collector/passive_collector.js
-browser_extension/youtube_home_collector/popup.html
-browser_extension/youtube_home_collector/popup_passive.js
-browser_extension/youtube_home_collector/popup.js
-browser_extension/youtube_home_collector/subscriptions.js
-
-# Local profile engine
-scripts/homepage/home_bridge.py
-scripts/profile/build_consolidated_profile.py
-scripts/profile/build_temporal_profile.py
-
-# Community network
-schemas/community_profile_submission.v1.schema.json
-scripts/community/submit_profile.py
-scripts/community/collector_agent.py
-scripts/community/community_server.py
-scripts/community/build_community_report.py
-docs/DISTRIBUTED_PROFILE_COLLECTION.md
-tests/test_community_report.py
-
-# Synthetic sandbox
-scripts/viewer/generate_viewers.py
-scripts/viewer/summarize_viewer_batch.py
+.github/workflows/python-tests.yml
 ```
 
----
-
-# 14. Immediate validation
-
-## Browser
-
-Với ít nhất hai independent participants/devices:
+Checks hiện gồm:
 
 ```text
-reload extension 0.6.1
-KHÔNG mở popup để bật gì
-mở YouTube và dùng bình thường
+Python compile
+community/viewer/android JSON schemas
+extension manifest
+Android XML well-formedness
+browser JS syntax
+community tests
+viewer tests
+Android guardrail tests
 ```
 
-Check:
+Android guardrail test:
 
 ```text
-passive collection tự chạy trên first YouTube visit
-Home snapshot đúng cards
-Up Next chỉ đến từ watch page participant tự mở
-Subscriptions snapshot hợp lý
-daily caps hoạt động
-pause dừng capture
-resume có thể schedule lại route hiện tại
-không auto-navigation/player
+tests/test_android_collector_guardrails.py
 ```
 
-## Community
-
-Check case:
+Khóa các yêu cầu:
 
 ```text
-Participant A 3 profiles
-Participant B 1 profile
-→ participant_count = 2
-→ profile_count = 4
-→ A không có tổng aggregate weight lớn hơn B chỉ vì nhiều profiles
-```
-
-## Creator report
-
-Check:
-
-```text
-core keys đúng shared semantic
-core tags không bị stale/noisy
-expansion keys thật sự rising/emerging
-participant coverage dễ hiểu
-fit-band thresholds hợp lý
+packageNames = com.google.android.youtube
+canRetrieveWindowContent = true
+isAccessibilityTool = false
+không interaction Accessibility APIs
+không INTERNET / overlay / QUERY_ALL_PACKAGES ở Android v0.1
 ```
 
 ---
 
-# 15. Next engineering steps
-
-Ưu tiên:
+# 10. Immediate next engineering sequence
 
 ```text
-1. Validate extension 0.6.1 auto-on với >=2 participants
-2. Package local bridge + community sync agent thành background desktop service/startup app
-3. Validate community server với >=2 participants
-4. Make community HTML the main Creator Dashboard
-5. Add profile drill-down/provenance
-6. Build Android adapter cùng submission protocol
-7. Add channel affinity / freshness / language / duration dimensions
-8. Revisit synthetic Viewer Robot only as sandbox support
+1. Build/install Android collector v0.1 on one test device
+2. Enable AccessibilityService and use YouTube naturally
+3. Obtain local Home/Watch/Subscriptions/Shorts/Search node fixtures
+4. Validate surface detector and identify stable video-card patterns
+5. Implement Android node → normalized YouTube surface parser
+6. Build Android daily/temporal profile compatible with community schema
+7. Add sanitized Android community sync
+8. Validate participant aggregation with Browser + Android data from >=2 real participants
+9. Make Community HTML the primary Creator Dashboard
+10. Package browser desktop bridge/agent as background service
 ```
 
----
-
-# 16. Data/safety boundary
-
-- Participation consent được xác lập khi người dùng chủ động tham gia/cài collector; không cần runtime opt-in checkbox.
-- Participant luôn có nút pause/resume.
-- Passive mode chỉ quan sát natural navigation; không tự tạo traffic.
-- Không tự click/play/like/comment/subscribe/unsubscribe.
-- Không dùng project profiles làm initial-engagement network.
-- Community server không cần cookies/password/Google account IDs.
-- Participant ID là random project ID, không phải email.
-- Một participant có nhiều profiles không được tính thành nhiều independent humans.
-- Community fit/coverage không phải xác suất view/recommendation.
-- Synthetic Viewer Robot chỉ là sandbox, không phải ground truth.
+Do not return to large synthetic population work before real distributed collectors are stable.
 
 ---
 
-# 17. Câu mở đầu cho cuộc trò chuyện sau
+# 11. Data / safety boundary
 
-> Đọc `PLAN.md`. Kiến trúc hiện tại là distributed natural profile collection: extension 0.6.1 auto-on khi participant truy cập YouTube → local longitudinal profile → sanitized community sync → participant-balanced creator community report. Tiếp tục validate auto-on collector, đóng gói local bridge/agent thành background service và hoàn thiện Creator Community Dashboard.
+- Browser collection auto-on after participant installs collector; participant can pause/resume.
+- Android collection auto-on after participant explicitly enables AccessibilityService; participant can pause/resume.
+- Android AccessibilityService is restricted to YouTube package and read-only node retrieval.
+- No automatic click/play/gesture/like/comment/subscribe/unsubscribe.
+- No project profile is used as an initial-engagement network.
+- Raw Android node tree remains local in v0.1.
+- Community server does not need cookie/password/Google account identity.
+- Multiple profiles/devices from one participant do not count as multiple independent humans.
+- Community fit/coverage is panel evidence, not probability of view/recommendation.
+- Viewer Robot remains sandbox, not ground truth.
+
+---
+
+# 12. Câu mở đầu cho cuộc trò chuyện sau
+
+> Đọc `PLAN.md`. Browser extension 0.6.1 đã auto-on. Android Accessibility collector v0.1 đã có nền: YouTube-only AccessibilityService → bounded local node-tree snapshot → provisional surface detector. Tiếp tục bằng việc lấy fixture node tree thật từ Android, viết node-to-video-card parser, rồi xây Android local profile + sanitized community sync.
