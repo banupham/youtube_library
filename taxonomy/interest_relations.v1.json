@@ -1,0 +1,66 @@
+{
+  "version": "1.0.0",
+  "purpose": "Seed graph for structured synthetic viewer generation. Weights are research priors, not observed YouTube transition probabilities.",
+  "notes": [
+    "Edges are used only by the offline Viewer Robot generator.",
+    "Weights express relative adjacency strength inside this project and must be tuned/evaluated later.",
+    "bidirectional=true means the generator may traverse the edge in either direction with the same seed weight."
+  ],
+  "edges": [
+    {"source":"science_technology","target":"education","type":"adjacent_interest","weight":0.78,"bidirectional":true,"source_type":"seed"},
+    {"source":"science_technology","target":"business_finance","type":"adjacent_interest","weight":0.62,"bidirectional":true,"source_type":"seed"},
+    {"source":"science_technology","target":"gaming","type":"adjacent_interest","weight":0.48,"bidirectional":true,"source_type":"seed"},
+    {"source":"science_technology","target":"autos_vehicles","type":"adjacent_interest","weight":0.40,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"gaming","target":"entertainment","type":"adjacent_interest","weight":0.78,"bidirectional":true,"source_type":"seed"},
+    {"source":"gaming","target":"music","type":"adjacent_interest","weight":0.34,"bidirectional":true,"source_type":"seed"},
+    {"source":"gaming","target":"sports","type":"adjacent_interest","weight":0.30,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"sports","target":"health_fitness","type":"adjacent_interest","weight":0.76,"bidirectional":true,"source_type":"seed"},
+    {"source":"sports","target":"entertainment","type":"adjacent_interest","weight":0.38,"bidirectional":true,"source_type":"seed"},
+    {"source":"sports","target":"autos_vehicles","type":"adjacent_interest","weight":0.28,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"food_cooking","target":"health_fitness","type":"adjacent_interest","weight":0.60,"bidirectional":true,"source_type":"seed"},
+    {"source":"food_cooking","target":"travel_events","type":"adjacent_interest","weight":0.66,"bidirectional":true,"source_type":"seed"},
+    {"source":"food_cooking","target":"people_lifestyle","type":"adjacent_interest","weight":0.42,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"travel_events","target":"people_lifestyle","type":"adjacent_interest","weight":0.48,"bidirectional":true,"source_type":"seed"},
+    {"source":"travel_events","target":"autos_vehicles","type":"adjacent_interest","weight":0.36,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"business_finance","target":"news_politics","type":"adjacent_interest","weight":0.64,"bidirectional":true,"source_type":"seed"},
+    {"source":"business_finance","target":"education","type":"adjacent_interest","weight":0.46,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"entertainment","target":"comedy","type":"adjacent_interest","weight":0.80,"bidirectional":true,"source_type":"seed"},
+    {"source":"entertainment","target":"music","type":"adjacent_interest","weight":0.70,"bidirectional":true,"source_type":"seed"},
+    {"source":"entertainment","target":"film_animation","type":"adjacent_interest","weight":0.66,"bidirectional":true,"source_type":"seed"},
+    {"source":"entertainment","target":"people_lifestyle","type":"adjacent_interest","weight":0.48,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"music","target":"film_animation","type":"adjacent_interest","weight":0.36,"bidirectional":true,"source_type":"seed"},
+    {"source":"music","target":"people_lifestyle","type":"adjacent_interest","weight":0.32,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"film_animation","target":"comedy","type":"adjacent_interest","weight":0.34,"bidirectional":true,"source_type":"seed"},
+    {"source":"film_animation","target":"education","type":"adjacent_interest","weight":0.24,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"education","target":"society_community","type":"adjacent_interest","weight":0.32,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"people_lifestyle","target":"howto_style","type":"adjacent_interest","weight":0.66,"bidirectional":true,"source_type":"seed"},
+    {"source":"people_lifestyle","target":"health_fitness","type":"adjacent_interest","weight":0.46,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"howto_style","target":"food_cooking","type":"adjacent_interest","weight":0.42,"bidirectional":true,"source_type":"seed"},
+    {"source":"howto_style","target":"health_fitness","type":"adjacent_interest","weight":0.38,"bidirectional":true,"source_type":"seed"},
+    {"source":"howto_style","target":"science_technology","type":"adjacent_interest","weight":0.30,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"autos_vehicles","target":"science_technology","type":"adjacent_interest","weight":0.46,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"pets_animals","target":"people_lifestyle","type":"adjacent_interest","weight":0.54,"bidirectional":true,"source_type":"seed"},
+    {"source":"pets_animals","target":"education","type":"adjacent_interest","weight":0.26,"bidirectional":true,"source_type":"seed"},
+    {"source":"pets_animals","target":"entertainment","type":"adjacent_interest","weight":0.32,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"comedy","target":"society_community","type":"adjacent_interest","weight":0.20,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"society_community","target":"news_politics","type":"adjacent_interest","weight":0.60,"bidirectional":true,"source_type":"seed"},
+    {"source":"society_community","target":"people_lifestyle","type":"adjacent_interest","weight":0.34,"bidirectional":true,"source_type":"seed"},
+
+    {"source":"news_politics","target":"education","type":"adjacent_interest","weight":0.30,"bidirectional":true,"source_type":"seed"}
+  ]
+}
