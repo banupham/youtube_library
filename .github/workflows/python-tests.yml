@@ -18,6 +18,7 @@ jobs:
           python -m py_compile scripts/profile/build_consolidated_profile.py
           python -m py_compile scripts/profile/build_temporal_profile.py
           python -m py_compile scripts/viewer/generate_viewers.py
+          python -m py_compile scripts/viewer/summarize_viewer_batch.py
       - name: Validate JSON seed/schema files
         run: |
           python -m json.tool taxonomy/interest_relations.v1.json > /dev/null
