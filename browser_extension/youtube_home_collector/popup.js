@@ -217,7 +217,7 @@ async function collectHomepage(scrolls, delayMs) {
 
 // Runs inside the active youtube.com tab. It fetches watch-page HTML only;
 // it does not navigate, click, instantiate a player, or request media streams.
-async function collectUpNextFromWatchHtml(parentVideoId, limit) {
+async function collectUpNextFromWatchHtml(parentVideoId, limit, replayToken) {
   function textValue(value) {
     if (!value) return '';
     if (typeof value === 'string') return value.trim();
@@ -356,7 +356,8 @@ async function collectUpNextFromWatchHtml(parentVideoId, limit) {
     for (const value of Object.values(node)) collectRenderers(value, output, depth + 1);
   }
 
-  const watchUrl = `/watch?v=${encodeURIComponent(parentVideoId)}&autoplay=0`;
+  const nonce = encodeURIComponent(String(replayToken || Date.now()));
+  const watchUrl = `/watch?v=${encodeURIComponent(parentVideoId)}&autoplay=0&_ytlib_replay=${nonce}`;
   const response = await fetch(watchUrl, {
     method: 'GET',
     credentials: 'include',
@@ -439,9 +440,12 @@ async function fallbackDownload(payload) {
   const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
   const profile = payload.collector_profile || {};
   const folder = `${safeFolderName(profile.profile_label)}__${shortProfileId(profile.profile_id)}`;
-  const prefix = payload.source === 'youtube_up_next'
-    ? `upnext_${String(payload.parent_video_id || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '')}_`
-    : 'home_';
+  let prefix = 'home_';
+  if (payload.source === 'youtube_up_next') {
+    const parent = String(payload.parent_video_id || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '');
+    const replay = Number(payload.replay_context?.replay_index || 0);
+    prefix = `upnext_${parent}${replay ? `_r${String(replay).padStart(2, '0')}` : ''}_`;
+  }
   const filename = `youtube_library/${folder}/${prefix}${filenameTimestamp()}.json`;
   await chrome.downloads.download({ url: dataUrl, filename, saveAs: false });
   return filename;
@@ -463,6 +467,7 @@ collectBtn.addEventListener('click', async () => {
     const scrolls = Math.max(0, Math.min(50, Number(document.getElementById('scrolls').value || 8)));
     const delay = Math.max(200, Math.min(10000, Number(document.getElementById('delay').value || 1500)));
     const upNextSamples = Math.max(0, Math.min(10, Number(document.getElementById('upNextSamples').value || 3)));
+    const upNextReplays = Math.max(1, Math.min(10, Number(document.getElementById('upNextReplays').value || 3)));
     const upNextLimit = Math.max(5, Math.min(40, Number(document.getElementById('upNextLimit').value || 20)));
 
     const results = await chrome.scripting.executeScript({
@@ -498,54 +503,70 @@ collectBtn.addEventListener('click', async () => {
     const upNextResults = [];
     const upNextFailures = [];
     let totalUpNext = 0;
+    const totalRequests = sampled.length * upNextReplays;
+    let requestSequence = 0;
 
     for (let index = 0; index < sampled.length; index += 1) {
       const parent = sampled[index];
-      setStatus(
-        `Profile: ${collectorProfile.profile_label} (${shortProfileId(collectorProfile.profile_id)})\n` +
-        `Home xong: ${payload.item_count} video\n` +
-        `Up Next ${index + 1}/${sampled.length}: đang đọc HTML cho #${parent.position} ${parent.title}`
-      );
 
-      try {
-        const scriptResult = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: collectUpNextFromWatchHtml,
-          args: [parent.video_id, upNextLimit]
-        });
-        const upPayload = scriptResult?.[0]?.result;
-        if (!upPayload || !Array.isArray(upPayload.items)) {
-          throw new Error('Watch HTML không trả về danh sách Up Next.');
+      for (let replayIndex = 1; replayIndex <= upNextReplays; replayIndex += 1) {
+        requestSequence += 1;
+        setStatus(
+          `Profile: ${collectorProfile.profile_label} (${shortProfileId(collectorProfile.profile_id)})\n` +
+          `Home xong: ${payload.item_count} video\n` +
+          `Seed ${index + 1}/${sampled.length} · replay ${replayIndex}/${upNextReplays}\n` +
+          `Up Next request ${requestSequence}/${totalRequests}: #${parent.position} ${parent.title}`
+        );
+
+        try {
+          const replayToken = `${Date.now()}-${index + 1}-${replayIndex}-${cryptoRandomInt(1000000)}`;
+          const scriptResult = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: collectUpNextFromWatchHtml,
+            args: [parent.video_id, upNextLimit, replayToken]
+          });
+          const upPayload = scriptResult?.[0]?.result;
+          if (!upPayload || !Array.isArray(upPayload.items)) {
+            throw new Error('Watch HTML không trả về danh sách Up Next.');
+          }
+
+          upPayload.collector_profile = collectorProfile;
+          upPayload.parent_title = parent.title || '';
+          upPayload.parent_channel = parent.channel || '';
+          upPayload.parent_home_position = parent.position || null;
+          upPayload.source_home_captured_at = payload.captured_at;
+          upPayload.sample_context = {
+            method: 'crypto_random_without_replacement',
+            sample_index: index + 1,
+            sample_size: sampled.length,
+            home_item_count: payload.item_count
+          };
+          upPayload.replay_context = {
+            replay_index: replayIndex,
+            replay_count: upNextReplays,
+            request_sequence: requestSequence,
+            total_requests: totalRequests,
+            replay_token: replayToken
+          };
+
+          const result = await postToBridge(upPayload);
+          upNextResults.push(result);
+          totalUpNext += upPayload.item_count;
+        } catch (error) {
+          upNextFailures.push({
+            video_id: parent.video_id,
+            title: parent.title,
+            replay_index: replayIndex,
+            error: error.message
+          });
         }
 
-        upPayload.collector_profile = collectorProfile;
-        upPayload.parent_title = parent.title || '';
-        upPayload.parent_channel = parent.channel || '';
-        upPayload.parent_home_position = parent.position || null;
-        upPayload.source_home_captured_at = payload.captured_at;
-        upPayload.sample_context = {
-          method: 'crypto_random_without_replacement',
-          sample_index: index + 1,
-          sample_size: sampled.length,
-          home_item_count: payload.item_count
-        };
-
-        const result = await postToBridge(upPayload);
-        upNextResults.push(result);
-        totalUpNext += upPayload.item_count;
-      } catch (error) {
-        upNextFailures.push({
-          video_id: parent.video_id,
-          title: parent.title,
-          error: error.message
-        });
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
-
-      await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
-    const upNextSummary = sampled.length
-      ? `${upNextResults.length}/${sampled.length} seed thành công · ${totalUpNext} gợi ý Up Next`
+    const upNextSummary = totalRequests
+      ? `${upNextResults.length}/${totalRequests} replay thành công · ${totalUpNext} gợi ý Up Next`
       : 'đã tắt';
     const failText = upNextFailures.length ? `\nUp Next lỗi: ${upNextFailures.length}` : '';
 
