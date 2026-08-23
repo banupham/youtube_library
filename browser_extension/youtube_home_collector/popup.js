@@ -2,6 +2,7 @@ const statusEl = document.getElementById('status');
 const collectBtn = document.getElementById('collect');
 const profileLabelEl = document.getElementById('profileLabel');
 const profileIdEl = document.getElementById('profileId');
+const CENTRAL_BASE = 'http://127.0.0.1:8770';
 
 function setStatus(text) { statusEl.textContent = text; }
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
@@ -41,7 +42,7 @@ async function saveProfileLabel() {
 profileLabelEl.addEventListener('change', async () => {
   await saveProfileLabel();
   const profile = await loadCollectorProfile();
-  setStatus(`Profile: ${profile.profile_label} (${shortProfileId(profile.profile_id)})\nBridge: 127.0.0.1:8765`);
+  setStatus(`Profile: ${profile.profile_label} (${shortProfileId(profile.profile_id)})\nCentral Server: 127.0.0.1:8770`);
 });
 
 async function collectHomepage(scrolls, delayMs) {
@@ -329,14 +330,14 @@ function sampleWithoutReplacement(items, count) {
   return copy.slice(0, wanted);
 }
 
-async function postBridge(endpoint, payload) {
-  const response = await fetch(`http://127.0.0.1:8765${endpoint}`, {
+async function postCentral(endpoint, payload) {
+  const response = await fetch(`${CENTRAL_BASE}${endpoint}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
   });
   if (!response.ok) {
     let detail = '';
     try { detail = await response.text(); } catch { detail = ''; }
-    throw new Error(`Bridge HTTP ${response.status}${detail ? `: ${detail.slice(0, 180)}` : ''}`);
+    throw new Error(`Central HTTP ${response.status}${detail ? `: ${detail.slice(0, 180)}` : ''}`);
   }
   return response.json();
 }
@@ -364,7 +365,7 @@ collectBtn.addEventListener('click', async () => {
     if (!home || !Array.isArray(home.items)) throw new Error('Không lấy được dữ liệu Home.');
     home.collector_profile = collectorProfile;
     home.collection_session_id = collectionSessionId;
-    await postBridge('/collect', home);
+    await postCentral('/collect', home);
 
     let subscriptionVideos = 0;
     let subscriptionChannels = 0;
@@ -384,7 +385,7 @@ collectBtn.addEventListener('click', async () => {
         if (!subscriptions || !Array.isArray(subscriptions.items)) throw new Error('Không lấy được Subscriptions payload.');
         subscriptions.collector_profile = collectorProfile;
         subscriptions.collection_session_id = collectionSessionId;
-        await postBridge('/collect', subscriptions);
+        await postCentral('/collect', subscriptions);
         subscriptionVideos = subscriptions.item_count || subscriptions.items.length;
         subscriptionChannels = Array.isArray(subscriptions.subscription_channels)
           ? subscriptions.subscription_channels.length
@@ -428,7 +429,7 @@ collectBtn.addEventListener('click', async () => {
               replay_index: replayIndex, replay_count: upNextReplays, request_sequence: requestSequence, total_requests: totalRequests, replay_token: replayToken
             }
           });
-          await postBridge('/collect', up);
+          await postCentral('/collect', up);
           success += 1;
           totalUpNext += up.item_count;
         } catch (error) {
@@ -440,7 +441,7 @@ collectBtn.addEventListener('click', async () => {
     }
 
     setStatus('Đang cập nhật daily history + temporal profile...');
-    const finalResult = await postBridge('/finalize', {
+    const finalResult = await postCentral('/finalize', {
       collector_profile: collectorProfile,
       collection_session_id: collectionSessionId
     });
@@ -454,8 +455,12 @@ collectBtn.addEventListener('click', async () => {
       `Up Next replay: ${success}/${totalRequests} · observations: ${totalUpNext}\n` +
       (subscriptionError ? `Subscriptions cảnh báo: ${subscriptionError.message}\n` : '') +
       (failures ? `Replay lỗi: ${failures}\n` : '') +
-      `Report tổng hợp: ${finalResult.profile_html_path}\nLibrary: ${finalResult.library_path}`
+      `Kết quả profile đã mở trên trình duyệt.`
     );
+
+    if (finalResult.profile_url) {
+      await chrome.tabs.create({ url: finalResult.profile_url });
+    }
   } catch (error) {
     setStatus(`Lỗi: ${error.message}`);
   } finally {
@@ -466,5 +471,5 @@ collectBtn.addEventListener('click', async () => {
 loadCollectorProfile().then(async (profile) => {
   const stored = await chrome.storage.local.get(['lastDailyCollectionAt']);
   const last = stored.lastDailyCollectionAt ? `\nLần cập nhật gần nhất: ${stored.lastDailyCollectionAt}` : '';
-  setStatus(`Profile: ${profile.profile_label} (${shortProfileId(profile.profile_id)})\nBridge cần chạy tại 127.0.0.1:8765.${last}`);
+  setStatus(`Profile: ${profile.profile_label} (${shortProfileId(profile.profile_id)})\nCentral Server: 127.0.0.1:8770.${last}`);
 }).catch((error) => setStatus(`Không khởi tạo được profile ID: ${error.message}`));
