@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtube-library.local/schemas/community_profile_submission.v1.schema.json",
+  "title": "YouTube Library Community Profile Submission v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "participant_id",
+    "device_id",
+    "profile_id",
+    "profile_key",
+    "updated_at",
+    "certainty_score",
+    "interest_weights"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "participant_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "device_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "profile_id": {"type": "string", "minLength": 4, "maxLength": 160},
+    "profile_key": {"type": "string", "minLength": 8, "maxLength": 200},
+    "behavior_profile_name": {"type": ["string", "null"], "maxLength": 160},
+    "analysis_version": {"type": ["string", "null"], "maxLength": 40},
+    "updated_at": {"type": "string"},
+    "certainty_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "daily_observation_count": {"type": "integer", "minimum": 0},
+    "collector": {
+      "type": "object",
+      "properties": {
+        "platform": {"type": "string", "enum": ["browser", "android", "other"]},
+        "agent_version": {"type": ["string", "null"]},
+        "submission_mode": {"type": "string", "enum": ["sanitized_profile_summary"]}
+      },
+      "additionalProperties": false
+    },
+    "interest_weights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "predicted_weight"],
+        "properties": {
+          "id": {"type": "string"},
+          "name_vi": {"type": ["string", "null"]},
+          "predicted_weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "today_weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "weight_7d": {"type": "number", "minimum": 0, "maximum": 1},
+          "weight_30d": {"type": "number", "minimum": 0, "maximum": 1},
+          "long_term_weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "trend_state": {"type": ["string", "null"]},
+          "home_weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "up_next_weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "subscription_weight": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "intent_weights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "label": {"type": ["string", "null"]},
+          "weight": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "required": ["id", "weight"],
+        "additionalProperties": false
+      }
+    },
+    "keyword_trends": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["value", "weight"],
+        "properties": {
+          "value": {"type": "string", "maxLength": 200},
+          "weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "today_weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "weight_7d": {"type": "number", "minimum": 0, "maximum": 1},
+          "weight_30d": {"type": "number", "minimum": 0, "maximum": 1},
+          "long_term_weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "trend_state": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "tag_trends": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["value", "weight"],
+        "properties": {
+          "value": {"type": "string", "maxLength": 200},
+          "weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "today_weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "weight_7d": {"type": "number", "minimum": 0, "maximum": 1},
+          "weight_30d": {"type": "number", "minimum": 0, "maximum": 1},
+          "long_term_weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "trend_state": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
