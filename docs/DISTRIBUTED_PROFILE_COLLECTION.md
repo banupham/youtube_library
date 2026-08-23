@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The project now treats observed profile data as a **consenting community panel** rather than as a proxy for all YouTube users.
+The project treats observed profile data as a **consenting community panel** rather than as a proxy for all YouTube users.
 
 The network has three separate modules:
 
@@ -62,19 +62,44 @@ daily longitudinal state
 
 It does not automatically click, play, like, comment, subscribe, or create traffic.
 
-### Natural capture rule
+### Participation / auto-start rule
 
-The preferred automatic collection pattern is **passive capture during natural use**:
+Joining the project and installing the collector establishes participation at the application level. The participant does **not** need to enable a runtime checkbox every time.
+
+Browser extension `0.6.1` uses:
 
 ```text
+extension installed for a participating profile
+        ↓
+passive collection defaults ON
+        ↓
 participant opens/uses YouTube normally
         ↓
-collector observes allowed surfaces
+collector observes allowed surfaces automatically
         ↓
 maximum configured daily snapshot cadence
 ```
 
+The popup exposes only a **Pause collection / Resume collection** control. An explicit `false` state is preserved across browser restarts; otherwise passive collection is enabled by default.
+
 The collector should not open videos or manufacture sessions solely to change recommendation state.
+
+### Natural capture rule
+
+Passive capture starts automatically when the participant visits YouTube, but it only captures surfaces the participant naturally reaches:
+
+```text
+Home opened naturally
+→ passive Home snapshot
+
+/watch?v=... opened naturally
+→ passive Up Next snapshot
+
+/feed/subscriptions opened naturally
+→ passive Subscriptions snapshot
+```
+
+It does not auto-navigate, auto-scroll, or auto-play in passive mode.
 
 ## 3. Android participation
 
@@ -262,9 +287,31 @@ Observed community data
 
 Project collectors are measurement infrastructure. They are not a coordinated initial-view or engagement network.
 
-## 11. Next engineering slice
+## 11. Current browser behavior
 
-1. Add passive once-per-day browser capture triggered by a participant naturally visiting YouTube Home.
-2. Validate community ingestion with at least two independent participants/devices.
-3. Build Android adapter against the same sanitized submission contract, starting only with read-only surfaces that can be accessed legitimately.
-4. Move Creator Community Intelligence to the primary creator UI; individual profile reports become drill-down evidence.
+Extension `0.6.1`:
+
+```text
+install/reload extension
+→ passive collection defaults ON
+→ visit youtube.com
+→ content script schedules capture for the natural route
+→ daily cap prevents excessive snapshots
+```
+
+Popup behavior:
+
+```text
+state shown as ACTIVE / PAUSED
+button: Pause collection / Resume collection
+```
+
+No runtime opt-in checkbox is required after installation.
+
+## 12. Next engineering slice
+
+1. Validate auto-on browser capture with at least two independent participants/devices.
+2. Validate that pause persists and resume can schedule capture on the current route without reopening YouTube.
+3. Validate community ingestion with at least two independent participants/devices.
+4. Build Android adapter against the same sanitized submission contract, starting only with read-only surfaces that can be accessed legitimately.
+5. Move Creator Community Intelligence to the primary creator UI; individual profile reports become drill-down evidence.
