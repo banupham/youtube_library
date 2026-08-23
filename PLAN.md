@@ -9,7 +9,7 @@
 `youtube_library` là hệ thống nghiên cứu/offline gồm hai phía:
 
 1. **Viewer side** — quan sát recommendation exposure của browser profile thật theo chế độ read-only, xây profile theo thời gian, sau đó mô phỏng viewer synthetic/offline.
-2. **Creator side** — dùng profile/cluster để đề xuất chuỗi nội dung mới có semantic fit tốt với vùng recommendation đang quan sát.
+2. **Creator side** — cung cấp một dashboard tổng hợp cho người sáng tạo: đang theo dõi bao nhiêu profile, các profile/cohort đang nghiêng về vùng nội dung nào, content lane nào có audience-fit tốt nhất, nên đóng gói video mới bằng keyword/tag/format nào và nên mở rộng chuỗi nội dung theo hướng nào.
 
 Taxonomy nội bộ không cần giống chính xác YouTube. Nó được tối ưu cho:
 
@@ -17,12 +17,13 @@ Taxonomy nội bộ không cần giống chính xác YouTube. Nó được tối
 classification
 → profile understanding
 → profile evolution
+→ cross-profile opportunity
 → content continuity
 → creator opportunity
 → viewer simulation
 ```
 
-Không dùng robot để tạo traffic, view, click, like, comment, subscribe hoặc tương tác giả trên YouTube thật.
+Không dùng robot hoặc các profile trong dự án để tạo traffic, view, click, like, comment, subscribe hoặc tương tác giả trên YouTube thật.
 
 ---
 
@@ -290,7 +291,240 @@ Absence không đồng nghĩa unsubscribe.
 
 ---
 
-# 6. Output hiện tại
+# 6. Ba loại profile/audience phải tách biệt
+
+Đây là ranh giới kiến trúc quan trọng cho các phase tiếp theo.
+
+```text
+A. OBSERVED PROJECT PROFILES
+   browser profiles được dự án theo dõi read-only
+   → Home / Up Next / Subscriptions / longitudinal state
+
+B. SYNTHETIC VIEWER PROFILES
+   robot/viewer mô phỏng hoàn toàn offline
+   → dùng để test feed, matching, interaction và interest learning
+
+C. EXTERNAL REAL AUDIENCE
+   người xem thật ngoài dự án
+   → không kiểm soát và không được mô phỏng như thể ta biết profile riêng của họ
+```
+
+Điểm chung giữa A/B/C chỉ nên dùng ở mức **mô hình sở thích và khả năng tương thích nội dung**. Không được giả định cùng một hành vi thực tế hay cùng một recommendation state.
+
+### Ranh giới bắt buộc
+
+Observed project profiles là một **research panel**, không phải nhóm tài khoản để tạo lượt xem ban đầu cho video mới.
+
+Không triển khai flow kiểu:
+
+```text
+publish video
+→ project profiles tự xem/click/like
+→ dùng engagement đó làm bàn đạp recommendation thật
+```
+
+Thay vào đó, dự án mô hình hóa bước này theo hướng an toàn:
+
+```text
+candidate video
+→ match với observed/synthetic profiles offline
+→ estimate audience-fit / cohort coverage
+→ creator quyết định có xuất bản hay không
+→ người xem thật tương tác tự nhiên ngoài dự án
+→ nếu có analytics hợp lệ của chính creator thì dùng kết quả thật để calibrate model
+```
+
+Nếu một người thật tự sử dụng browser profile một cách tự nhiên, dự án có thể quan sát read-only những thay đổi recommendation sau đó khi được phép, nhưng collector không được điều phối hành vi đó.
+
+---
+
+# 7. Creator-facing output contract
+
+Người dùng cuối của report là **người sáng tạo nội dung**. Vì vậy UI mặc định không nên bắt creator mở từng profile và đọc toàn bộ chi tiết kỹ thuật.
+
+## 7.1 Dashboard tổng quan cần trả lời ngay
+
+```text
+Hiện đang theo dõi bao nhiêu profile?
+Bao nhiêu profile đã đủ dữ liệu / đang forming / ổn định?
+Content lane nào match được nhiều profile nhất?
+Content lane nào đang rising ở nhiều profile?
+Nếu làm video mới, nên ưu tiên hướng nào?
+Keyword/title/description/tag nên xoay quanh cụm nào?
+Nên giữ anchor hay mở bridge/expansion?
+Mức chắc chắn của gợi ý là bao nhiêu?
+```
+
+UI tổng quan nên có tối thiểu:
+
+```text
+Tracked profiles                  N
+Profiles with usable evidence     N
+Profiles forming                  N
+Profiles stable                   N
+
+Top creator opportunity lanes
+1. Lane A    profile coverage  x/N
+2. Lane B    profile coverage  y/N
+3. Lane C    profile coverage  z/N
+
+Rising across profiles
+Stable across profiles
+Cooling across profiles
+
+Recommended next content lane
+Recommended bridge lane
+Controlled expansion candidate
+```
+
+## 7.2 Không gọi fit score là xác suất view
+
+Có thể hiển thị:
+
+```text
+profile_fit
+cohort_coverage
+cross_profile_support
+content_opportunity_score
+```
+
+Nhưng không đổi tên chúng thành:
+
+```text
+probability_of_view
+probability_of_recommendation
+```
+
+vì project không biết trực tiếp xác suất recommendation/view của YouTube.
+
+Creator-facing wording nên là:
+
+> Nội dung này đang có mức phù hợp cao với X/Y profile được theo dõi và xuất hiện trong các vùng recommendation/affinity quan sát được.
+
+không phải:
+
+> Video này sẽ được X profile xem hoặc YouTube sẽ đẩy ra ngoài.
+
+## 7.3 Cross-profile opportunity quan trọng hơn tối ưu một profile đơn
+
+Một creator không nên làm một video riêng cho từng browser profile.
+
+Cần aggregate:
+
+```text
+Profile A ─┐
+Profile B ─┼─ shared content neighborhood
+Profile C ─┘
+```
+
+Ví dụ:
+
+```text
+A → AI tools
+B → YouTube creator workflow
+C → automation/tutorial
+```
+
+có thể tạo một lane:
+
+```text
+AI Creator Workflow
+```
+
+nếu lane này đồng thời giữ được channel DNA và series continuity.
+
+Metric cần thêm ở Phase 11/12:
+
+```text
+matched_profile_count
+matched_profile_ratio
+weighted_profile_coverage
+cross_profile_keyword_overlap
+cross_profile_topic_overlap
+trend_breadth
+```
+
+## 7.4 Creator chỉ cần drill-down khi cần giải thích
+
+Dashboard cấp 1:
+
+```text
+profile count
+cohort coverage
+content opportunities
+series recommendation
+creative blueprint
+certainty
+```
+
+Drill-down cấp 2 mới hiển thị:
+
+```text
+profile nào hỗ trợ lane này
+Home / Up Next / Subscriptions evidence
+Today / 7d / 30d / Long-term
+keyword/tag provenance
+```
+
+Raw JSON/session data vẫn giữ cho debug/model development, không phải UI chính cho creator.
+
+---
+
+# 8. Hướng “bàn đạp” được mô hình hóa như thế nào
+
+Mục tiêu creator hợp lý là chọn một video có **initial audience fit** tốt để khi được người xem thật tiếp cận, video có cơ hội nhận phản hồi tích cực tự nhiên và từ đó có thể tiếp tục tiếp cận audience rộng hơn.
+
+Project chỉ hỗ trợ phần trước publication:
+
+```text
+Observed profile panel
++
+Synthetic audience model
++
+Content candidate
+↓
+INITIAL AUDIENCE-FIT ESTIMATE
+↓
+Creator publishes organically
+↓
+External real audience behavior
+↓
+Optional creator-owned analytics feedback
+↓
+Model calibration
+```
+
+Không dùng observed/synthetic project profiles để tạo engagement thật.
+
+### Khi có dữ liệu creator-owned analytics về sau
+
+Nếu creator có quyền hợp lệ với channel/video của chính họ, có thể bổ sung một feedback layer chỉ đọc như:
+
+```text
+impressions
+CTR
+average view duration
+retention
+traffic source
+returning/new viewers
+```
+
+Nếu API/quyền truy cập cho phép. Đây sẽ là **real outcome evidence** để kiểm tra model creator opportunity, thay vì cố tạo outcome bằng project profiles.
+
+Khi đó vòng học an toàn sẽ là:
+
+```text
+profile intelligence
+→ creator recommendation
+→ organic publication
+→ real analytics outcome
+→ calibration
+→ improved creator recommendation
+```
+
+---
+
+# 9. Output hiện tại
 
 Người dùng vẫn chỉ cần nhìn **một current report** cho mỗi browser profile:
 
@@ -319,9 +553,34 @@ data/collection_sessions/
 
 Tất cả personalized data trên được `.gitignore` mặc định.
 
+### Output cần bổ sung sau validation Phase 5.5
+
+Ngoài report từng profile, cần một creator dashboard tổng hợp dự kiến:
+
+```text
+data/creator_reports/current.html
+data/creator_reports/current.json
+```
+
+Nó đọc từ `profile_library/index.json` + các current longitudinal profiles và trả:
+
+```text
+tracked profile count
+usable profile count
+profile maturity summary
+cross-profile content lanes
+weighted profile coverage
+rising/stable/cooling opportunity breadth
+recommended anchor/bridge/expansion
+creative blueprint cho các lane ưu tiên
+certainty / sample limitations
+```
+
+Đây sẽ là UI chính cho creator; report từng profile trở thành drill-down.
+
 ---
 
-# 7. Report hiện có
+# 10. Report từng profile hiện có
 
 Longitudinal HTML hiện hiển thị:
 
@@ -371,7 +630,7 @@ cooling/dormant → không nên pivot kênh chỉ vì historical weight
 
 ---
 
-# 8. Creative blueprint hiện tại
+# 11. Creative blueprint hiện tại
 
 Mỗi lane có creative brief:
 
@@ -419,7 +678,7 @@ Không viết hộ video hoàn chỉnh.
 
 ---
 
-# 9. Version/module checkpoint
+# 12. Version/module checkpoint
 
 ### Extension
 
@@ -496,7 +755,7 @@ tests/test_temporal_profile.py
 
 ---
 
-# 10. Recent implementation commits
+# 13. Recent implementation commits
 
 ```text
 7df991b  extension 0.4.1 — Up Next video-only fix
@@ -517,7 +776,7 @@ Luôn fetch file hiện tại trước khi sửa; không overwrite bằng SHA c�
 
 ---
 
-# 11. Validation cần làm trước Phase 6
+# 14. Validation cần làm trước Phase 6
 
 Không thêm feature lớn vào Phase 5.5 ngay. Chạy dữ liệu thật trước.
 
@@ -563,7 +822,23 @@ Không gọi tuning này là “tìm đúng thuật toán YouTube”.
 
 ---
 
-# 12. Những phần vẫn chưa làm
+# 15. Những phần vẫn chưa làm
+
+### Creator aggregate dashboard
+
+Chưa có report tổng hợp cho người sáng tạo trên toàn bộ profile library. Đây là feature creator-facing ưu tiên cao sau khi Phase 5.5 có vài ngày data.
+
+Cần aggregate:
+
+```text
+tracked profiles
+usable/mature profiles
+cross-profile content lanes
+profile coverage
+trend breadth
+shared keywords/tags
+channel/content DNA compatibility
+```
 
 ### Automatic daily scheduler
 
@@ -649,6 +924,7 @@ Chưa có module riêng để nhập idea creator và chấm:
 
 ```text
 Profile fit
+Weighted profile coverage
 Channel DNA fit
 Home overlap
 Up Next overlap
@@ -660,15 +936,23 @@ Series continuity
 Temporal trend
 ```
 
+### Organic outcome calibration
+
+Chưa có layer nhập analytics hợp lệ từ video/channel của creator để so sánh prediction với outcome thật.
+
+Khi làm, đây phải là observational feedback, không phải hệ thống tạo engagement.
+
 ---
 
-# 13. Next step chính thức
+# 16. Next step chính thức
 
 ## Trước tiên
 
 **Validate Phase 5.5 trong 3–7 ngày.**
 
 Không cần chờ đủ 7 ngày để sửa bug collector nếu phát hiện lỗi rõ ràng.
+
+Song song, sau khi có ít nhất vài profile usable có thể xây **Creator Aggregate Dashboard** mà không thay đổi collector.
 
 ## Sau khi temporal state ổn
 
@@ -687,7 +971,7 @@ Viewer Robot từ Phase 6 trở đi vẫn chạy synthetic/offline.
 
 ---
 
-# 14. Sau Phase 6
+# 17. Sau Phase 6
 
 ```text
 Phase 7  Feed Simulation
@@ -695,20 +979,24 @@ Phase 8  Interaction Simulation
 Phase 9  Interest Learning
 Phase 10 Behavior Archetypes từ simulation history
 Phase 11 Audience Clustering
-Phase 12 Creator Strategy hoàn thiện
+Phase 12 Creator Strategy hoàn thiện + aggregate dashboard
 Phase 13 Viewer ↔ Creator Matching
 Phase 14 Closed Loop
 Phase 15 Learned Transition Graph
-Phase 16 Evaluation
+Phase 16 Evaluation / organic outcome calibration
 ```
 
 ---
 
-# 15. Câu mở đầu cho cuộc trò chuyện sau
+# 18. Câu mở đầu cho cuộc trò chuyện sau
 
 Để validate Phase 5.5:
 
 > Đọc `PLAN.md`. Tôi đã collect dữ liệu mới bằng extension 0.5.0. Kiểm tra longitudinal profile, Subscriptions và trend states trước khi sang Phase 6.
+
+Để làm creator UI:
+
+> Đọc `PLAN.md` và xây Creator Aggregate Dashboard: tổng số profile, usable/mature profiles, cross-profile content opportunity, weighted profile coverage và creative blueprint; report từng profile chỉ là drill-down.
 
 Khi đã validation ổn:
 
@@ -716,14 +1004,16 @@ Khi đã validation ổn:
 
 ---
 
-# 16. Safety / scope bắt buộc
+# 19. Safety / scope bắt buộc
 
 - Collector thật chỉ read-only.
 - Không tự click/play/like/comment/subscribe/unsubscribe.
 - Không fake traffic/view/engagement.
+- Không dùng observed project profiles hoặc synthetic profiles như nhóm tài khoản tạo initial views/engagement cho video thật.
 - Recommendation exposure không phải watch behavior thật.
 - Subscriptions là explicit affinity, không phải recommendation surface hay watch history.
 - Viewer Robot từ Phase 6 phải synthetic/offline.
-- Creator opportunity score là heuristic nghiên cứu, không đảm bảo impressions/views.
+- Creator opportunity score / profile coverage là heuristic audience-fit, không phải xác suất view/recommendation.
+- External real audience phải được xem là population ngoài dự án, không giả định ta biết profile nội bộ của họ.
 - Official YouTube metadata là evidence/reference, không phải semantic ground truth.
 - Không gọi coverage/separability là accuracy nếu chưa có labeled ground truth.
