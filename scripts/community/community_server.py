@@ -26,6 +26,7 @@ from pathlib import Path
 
 from browser_pipeline import BrowserPipeline
 from interaction_store import InteractionStore
+from submit_profile import build_submission
 
 MAX_BODY_BYTES = 2_000_000
 ALLOWED_PLATFORMS = {"browser", "android", "other"}
@@ -263,6 +264,22 @@ def main() -> None:
             check=True,
         )
 
+    def store_community_submission(submission: dict) -> tuple[bool, str]:
+        errors = validate_submission(submission)
+        if errors:
+            return False, "invalid:" + ";".join(errors[:5])
+        participant_id = str(submission["participant_id"])
+        profile_key = str(submission["profile_key"])
+        filename = f"participant_{safe_short(participant_id)}__profile_{safe_short(profile_key)}.json"
+        path = input_dir / filename
+        with write_lock:
+            write_json(path, submission)
+            try:
+                rebuild_report()
+            except subprocess.CalledProcessError as exc:
+                return False, f"report_failed:{exc.returncode}"
+        return True, filename
+
     def attach_interactions_to_profile(response: dict) -> dict | None:
         profile_id = str(response.get("profile_id") or "")
         summary = interaction_store.summary_for_profile(profile_id)
@@ -283,13 +300,40 @@ def main() -> None:
                 continue
         return summary
 
+    def promote_browser_profile(finalize_request: object, response: dict) -> str:
+        if not isinstance(finalize_request, dict):
+            return "skipped:invalid_finalize_request"
+        collector = finalize_request.get("collector_profile")
+        if not isinstance(collector, dict):
+            return "skipped:missing_collector_profile"
+        participant_id = str(collector.get("participant_id") or "").strip()
+        device_id = str(collector.get("device_id") or "").strip()
+        if len(participant_id) < 4 or len(device_id) < 4:
+            return "skipped:missing_participant_identity"
+        profile_path_value = response.get("profile_json_path")
+        if not profile_path_value:
+            return "skipped:missing_profile_path"
+        profile_path = repo_root / str(profile_path_value)
+        try:
+            profile_payload = json.loads(profile_path.read_text(encoding="utf-8"))
+            submission = build_submission(
+                profile_payload,
+                {"participant_id": participant_id, "device_id": device_id},
+                platform="browser",
+                agent_version="0.7.0",
+            )
+        except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+            return f"failed:build_submission:{exc}"
+        ok, detail = store_community_submission(submission)
+        return "updated:" + detail if ok else "failed:" + detail
+
     try:
         rebuild_report()
     except subprocess.CalledProcessError as exc:
         print(f"Warning: initial creator dashboard build failed: {exc}")
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "YouTubeLibraryCentral/2.1"
+        server_version = "YouTubeLibraryCentral/2.2"
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -383,7 +427,7 @@ def main() -> None:
                     {
                         "ok": True,
                         "service": "youtube-library-central",
-                        "version": "2.1.0",
+                        "version": "2.2.0",
                         "port": args.port,
                         "single_process": True,
                         "dashboard": "/",
@@ -416,6 +460,7 @@ def main() -> None:
                 status, response = browser_pipeline.finalize(payload)
                 if status == 200:
                     response["natural_interactions"] = attach_interactions_to_profile(response)
+                    response["community_profile_status"] = promote_browser_profile(payload, response)
                 self._json(status, response)
             elif self.path == "/v1/android/snapshot":
                 self._handle_android_snapshot(payload)
@@ -431,18 +476,17 @@ def main() -> None:
                 self._json(400, {"error": "invalid_submission", "details": errors[:20]})
                 return
             assert isinstance(payload, dict)
-            participant_id = str(payload["participant_id"])
-            profile_key = str(payload["profile_key"])
-            filename = f"participant_{safe_short(participant_id)}__profile_{safe_short(profile_key)}.json"
-            path = input_dir / filename
-            with write_lock:
-                path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                try:
-                    rebuild_report()
-                    report_status = "updated"
-                except subprocess.CalledProcessError as exc:
-                    report_status = f"failed:{exc.returncode}"
-            self._json(200, {"ok": True, "profile_key": profile_key, "stored": filename, "community_report_status": report_status, "dashboard_url": "/"})
+            ok, detail = store_community_submission(payload)
+            self._json(
+                200 if ok else 500,
+                {
+                    "ok": ok,
+                    "profile_key": payload.get("profile_key"),
+                    "stored": detail if ok else None,
+                    "community_report_status": "updated" if ok else detail,
+                    "dashboard_url": "/",
+                },
+            )
 
         def _handle_android_snapshot(self, payload: object) -> None:
             errors = validate_android_ingest(payload)
@@ -473,7 +517,7 @@ def main() -> None:
             print(f"[central] {self.address_string()} - {format % values}")
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"YouTube Library Central Server v2.1: http://{args.host}:{args.port}")
+    print(f"YouTube Library Central Server v2.2: http://{args.host}:{args.port}")
     print(f"Dashboard: http://127.0.0.1:{args.port}/")
     print("Chrome: POST /collect + POST /finalize")
     print("Android: POST /v1/android/snapshot")
