@@ -15,6 +15,7 @@ jobs:
       - name: Compile project Python modules
         run: |
           python -m py_compile scripts/community/browser_pipeline.py
+          python -m py_compile scripts/community/interaction_store.py
           python -m py_compile scripts/profile/build_consolidated_profile.py
           python -m py_compile scripts/profile/build_temporal_profile.py
           python -m py_compile scripts/viewer/generate_viewers.py
@@ -32,6 +33,7 @@ jobs:
           python -m json.tool schemas/community_profile_submission.v1.schema.json > /dev/null
           python -m json.tool schemas/android_accessibility_snapshot.v1.schema.json > /dev/null
           python -m json.tool schemas/android_snapshot_ingest.v1.schema.json > /dev/null
+          python -m json.tool schemas/interaction_event.v1.schema.json > /dev/null
           python -m json.tool browser_extension/youtube_home_collector/manifest.json > /dev/null
       - name: Validate Android XML files
         run: |
@@ -50,6 +52,7 @@ jobs:
           node --check browser_extension/youtube_home_collector/background.js
           node --check browser_extension/youtube_home_collector/passive_collector.js
           node --check browser_extension/youtube_home_collector/popup_passive.js
+          node --check browser_extension/youtube_home_collector/popup_settings.js
           node --check browser_extension/youtube_home_collector/popup.js
           node --check browser_extension/youtube_home_collector/subscriptions.js
       - name: Run unit tests
