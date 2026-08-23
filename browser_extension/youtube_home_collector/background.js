@@ -6,7 +6,7 @@ const EVENT_SCORES = {
   like: 1.0,
   unlike: -1.0,
   dislike: -1.0,
-  undislike: 0.0,
+  undislike: 1.0,
   comment_submit: 1.0
 };
 
