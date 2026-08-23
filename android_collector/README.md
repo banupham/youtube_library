@@ -95,6 +95,14 @@ files/youtube_accessibility_snapshots/YYYY-MM-DD.jsonl
 
 Raw node trees are **not** sent to the community server in v1.
 
+For parser validation the participant can explicitly open the collector app and press:
+
+```text
+Xuất snapshot JSONL hôm nay
+```
+
+Android then opens the system document picker. Nothing is exported unless the participant chooses a destination.
+
 Daily caps + tree-signature deduplication reduce repeated captures caused by Android UI event noise.
 
 Initial caps:
@@ -134,10 +142,11 @@ Before implementing a strict video-card parser:
 1. Install the app on at least 2 Android devices / YouTube versions.
 2. Enable the AccessibilityService.
 3. Naturally visit Home, Watch, Subscriptions, Shorts and Search.
-4. Export/inspect a small set of local snapshots with the participant's consent.
-5. Identify stable node patterns for video title/channel/metadata/recommendation sections.
-6. Add fixture-based parser tests.
-7. Only then map Android evidence into the same logical surfaces used by the browser profile engine.
+4. Use **Xuất snapshot JSONL hôm nay** to export a small participant-approved fixture.
+5. Inspect it locally with `scripts/android/inspect_accessibility_snapshots.py`.
+6. Identify stable node patterns for video title/channel/metadata/recommendation sections.
+7. Add fixture-based parser tests.
+8. Only then map Android evidence into the same logical surfaces used by the browser profile engine.
 
 ## Current limitation: account/profile switching
 
@@ -149,7 +158,7 @@ If a participant switches between multiple YouTube accounts in the same Android 
 
 Open `android_collector/` in Android Studio, sync Gradle and install the `app` module on a test device.
 
-The Gradle versions are repository pins for the prototype and may be updated when the project adopts a formal Android CI matrix.
+The Gradle versions are repository pins for the prototype and may be updated when the project adopts a formal Android CI matrix. The current repository CI validates schemas/XML/guardrails but does not yet perform a full Android SDK build.
 
 ## Next Android slice
 
