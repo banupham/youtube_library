@@ -22,14 +22,21 @@ class AndroidCollectorGuardrailTests(unittest.TestCase):
         self.assertEqual(snapshot["source_package"]["const"], "com.google.android.youtube")
         self.assertEqual(snapshot["platform"]["const"], "android")
 
-    def test_accessibility_service_is_youtube_only(self):
+    def test_accessibility_service_is_youtube_only_and_listens_to_natural_clicks(self):
         xml = (ANDROID / "res" / "xml" / "accessibility_service_config.xml").read_text(encoding="utf-8")
         self.assertIn('android:packageNames="com.google.android.youtube"', xml)
         self.assertIn('android:canRetrieveWindowContent="true"', xml)
         self.assertIn('android:isAccessibilityTool="false"', xml)
+        self.assertIn("typeViewClicked", xml)
 
-    def test_service_has_no_interaction_apis(self):
-        kotlin = (KOTLIN / "YouTubeAccessibilityService.kt").read_text(encoding="utf-8")
+    def test_service_has_no_action_or_input_injection_apis(self):
+        sources = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in [
+                KOTLIN / "YouTubeAccessibilityService.kt",
+                KOTLIN / "InteractionDetector.kt",
+            ]
+        )
         forbidden = [
             "performAction(",
             "dispatchGesture(",
@@ -39,7 +46,7 @@ class AndroidCollectorGuardrailTests(unittest.TestCase):
             "ACTION_SET_TEXT",
         ]
         for token in forbidden:
-            self.assertNotIn(token, kotlin, token)
+            self.assertNotIn(token, sources, token)
 
     def test_manifest_network_is_limited_to_internet_without_overlay_or_package_scan(self):
         manifest = (ANDROID / "AndroidManifest.xml").read_text(encoding="utf-8")
@@ -47,11 +54,18 @@ class AndroidCollectorGuardrailTests(unittest.TestCase):
         self.assertNotIn("android.permission.SYSTEM_ALERT_WINDOW", manifest)
         self.assertNotIn("QUERY_ALL_PACKAGES", manifest)
 
-    def test_auto_sync_uses_dedicated_android_ingest_endpoint(self):
+    def test_auto_sync_uses_snapshot_and_interaction_endpoints(self):
         kotlin = (KOTLIN / "AndroidAutoSync.kt").read_text(encoding="utf-8")
         self.assertIn('"/v1/android/snapshot"', kotlin)
+        self.assertIn('"/v1/interaction"', kotlin)
         self.assertIn("Authorization", kotlin)
-        self.assertIn("pending.jsonl", kotlin)
+        self.assertIn("pending_snapshots.jsonl", kotlin)
+        self.assertIn("pending_interactions.jsonl", kotlin)
+
+    def test_comment_content_is_not_added_to_interaction_payload(self):
+        kotlin = (KOTLIN / "AndroidAutoSync.kt").read_text(encoding="utf-8")
+        self.assertNotIn("comment_text", kotlin)
+        self.assertNotIn("comment_body", kotlin)
 
 
 if __name__ == "__main__":
