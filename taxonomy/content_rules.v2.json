@@ -1,0 +1,180 @@
+{
+  "version": "2.0.0",
+  "purpose": "Context/entity classifier for YouTube Home and enriched video metadata.",
+  "principles": [
+    "Content category is separated from content intent.",
+    "Entities and anchor phrases are stronger than generic support words.",
+    "Ambiguous short tokens such as Vietnamese 'ai' are not standalone AI signals.",
+    "Generic tutorial words classify intent, not automatically How-to & Style content.",
+    "Internal categories are multi-label and are not identical to YouTube videoCategory IDs."
+  ],
+  "scoring": {
+    "entity": 6.0,
+    "anchor": 4.0,
+    "support": 1.0,
+    "youtube_category": 7.0,
+    "source_multipliers": {
+      "title": 1.0,
+      "channel": 0.6,
+      "tags": 0.9,
+      "description": 0.45,
+      "youtube_topics": 0.65
+    }
+  },
+  "categories": [
+    {
+      "id": "entertainment",
+      "name_vi": "Giải trí",
+      "youtube_video_category_ids": [24],
+      "anchors": ["giải trí", "reality show", "variety show", "running man", "sao nhập ngũ", "tinh hà say hi", "dance battle", "talent show", "gameshow", "game show"],
+      "entities": ["running man vietnam", "sao nhập ngũ - viettel media", "tinh hà say hi"],
+      "support": ["tập", "show", "anh trai", "battle"]
+    },
+    {
+      "id": "news_politics",
+      "name_vi": "Tin tức & Chính trị",
+      "youtube_video_category_ids": [25],
+      "anchors": ["tin tức", "tin nóng", "thời sự", "breaking news", "xung đột", "chính trị", "bầu cử", "địa chính trị", "quân sự", "thế giới toàn cảnh", "war"],
+      "entities": ["vtv24", "world at war"],
+      "support": ["nga", "ucraina", "ukraine", "government", "election", "toàn cảnh"]
+    },
+    {
+      "id": "music",
+      "name_vi": "Âm nhạc",
+      "youtube_video_category_ids": [10],
+      "anchors": ["nhạc", "âm nhạc", "music", "bài hát", "song", "remix", "playlist", "lyrics", "edm", "ballad", "cover", "album", "ca sĩ", "hip hop", "hip-hop", "r&b", "rock", "pop", "mashup", "hòa tấu", "guitar", "handpan", "concert"],
+      "entities": ["linkin park", "avicii", "calvin harris", "coldplay", "martin garrix", "kygo", "the chainsmokers", "bd music trending", "ac music", "mây lang thang music", "zenmusics", "lunar fm", "alt fm radio", "yêu edm", "h2o remix", "trạm nhạc", "音乐盒"],
+      "support": ["live", "radio", "vocal", "giọng", "tiktok", "mix"]
+    },
+    {
+      "id": "gaming",
+      "name_vi": "Trò chơi",
+      "youtube_video_category_ids": [20],
+      "anchors": ["game", "gaming", "gameplay", "esports", "pubg", "league of legends", "lol", "teamfight tactics", "tft", "ttcc", "valorant", "cs2", "counter-strike", "apex", "night crows", "moba", "fps"],
+      "entities": ["lck", "t1", "hle", "bfx", "lcp", "cfo", "tsw", "mixigaming", "bomman", "pobbrose", "sangtraan", "lol esports"],
+      "support": ["playoffs", "chung kết", "rank", "championship"]
+    },
+    {
+      "id": "sports",
+      "name_vi": "Thể thao",
+      "youtube_video_category_ids": [17],
+      "anchors": ["thể thao", "bóng đá", "football", "soccer", "basketball", "tennis", "boxing", "mma", "ufc", "darts", "world darts championship", "golf", "formula 1", "motogp"],
+      "entities": ["professional darts corporation", "fpt bóng đá"],
+      "support": ["full match", "championship", "highlights", "athlete"]
+    },
+    {
+      "id": "film_animation",
+      "name_vi": "Phim & Hoạt hình",
+      "youtube_video_category_ids": [1],
+      "anchors": ["phim", "điện ảnh", "hoạt hình", "anime", "movie", "film", "cinema", "conan", "drama", "tổng tài", "tu tiên", "tv series"],
+      "entities": ["pops anime", "mọt phim hay", "mọt phim tv", "kk studio - phim điện ảnh"],
+      "support": ["tập", "vai diễn", "hành động", "series"]
+    },
+    {
+      "id": "education",
+      "name_vi": "Giáo dục",
+      "youtube_video_category_ids": [27],
+      "anchors": ["giáo dục", "học tập", "bài giảng", "toán", "vật lý", "hóa học", "sinh học", "lịch sử", "địa lý", "hằng đẳng thức", "luyện nghe", "hsk", "bách việt", "kiến thức", "lesson", "course", "lecture", "study"],
+      "entities": ["ngẫm lại sử", "văn vở", "chinese studio podcast", "trung anh siêu nhân"],
+      "support": ["bài học", "exam", "learning"]
+    },
+    {
+      "id": "science_technology",
+      "name_vi": "Khoa học & Công nghệ",
+      "youtube_video_category_ids": [28],
+      "anchors": ["công nghệ", "khoa học", "trí tuệ nhân tạo", "artificial intelligence", "chatgpt", "claude", "gemini", "llm", "machine learning", "deep learning", "lập trình", "programming", "coding", "python", "software", "phần mềm", "capcut", "veo", "video ai", "hardware", "gpu", "cpu", "cybersecurity", "robotics", "smartphone", "iphone", "android", "laptop", "macbook"],
+      "entities": ["h2dev", "quạ hd"],
+      "support": ["youtube", "tool", "app", "editor", "pc"]
+    },
+    {
+      "id": "people_lifestyle",
+      "name_vi": "Con người & Cuộc sống",
+      "youtube_video_category_ids": [22],
+      "anchors": ["vlog", "cuộc sống", "gia đình", "daily life", "day in my life", "routine", "student life", "storytime"],
+      "entities": ["jenny huynh", "đông paulo vlogs - cuộc sống ở châu phi"],
+      "support": ["mẹ", "mỹ", "châu phi", "đời sống"]
+    },
+    {
+      "id": "howto_style",
+      "name_vi": "Hướng dẫn & Phong cách",
+      "youtube_video_category_ids": [26],
+      "anchors": ["thời trang", "làm đẹp", "trang điểm", "skincare", "makeup", "diy", "home improvement", "fashion", "beauty", "hair", "gardening", "crafts"],
+      "entities": [],
+      "support": ["style"]
+    },
+    {
+      "id": "travel_events",
+      "name_vi": "Du lịch & Sự kiện",
+      "youtube_video_category_ids": [19],
+      "anchors": ["du lịch", "travel", "phượt", "cắm trại", "tourism", "destination", "travel guide", "backpacking", "festival", "podróż", "städte"],
+      "entities": ["khoai lang thang", "hưởng khám phá", "kompas podróży", "wunder der welt"],
+      "support": ["germany", "đức", "lào", "ninh bình", "tràng an", "tam cốc"]
+    },
+    {
+      "id": "autos_vehicles",
+      "name_vi": "Xe & Phương tiện",
+      "youtube_video_category_ids": [2],
+      "anchors": ["ô tô", "xe hơi", "xe máy", "car", "automobile", "motorcycle", "vehicle", "electric car", "supercar", "test drive", "scooter"],
+      "entities": [],
+      "support": ["xe"]
+    },
+    {
+      "id": "pets_animals",
+      "name_vi": "Thú cưng & Động vật",
+      "youtube_video_category_ids": [15],
+      "anchors": ["thú cưng", "động vật", "chó", "mèo", "cá trê", "wildlife", "animal", "pet", "dog", "cat"],
+      "entities": [],
+      "support": ["cá", "ao"]
+    },
+    {
+      "id": "comedy",
+      "name_vi": "Hài",
+      "youtube_video_category_ids": [23],
+      "anchors": ["hài", "comedy", "funny", "stand-up", "sketch", "parody", "satire", "prank"],
+      "entities": [],
+      "support": []
+    },
+    {
+      "id": "society_community",
+      "name_vi": "Xã hội & Cộng đồng",
+      "youtube_video_category_ids": [29],
+      "anchors": ["xã hội", "cộng đồng", "từ thiện", "phi lợi nhuận", "human rights", "religion", "hầu đồng", "tôn giáo"],
+      "entities": [],
+      "support": ["charity", "community"]
+    },
+    {
+      "id": "business_finance",
+      "name_vi": "Kinh doanh & Tài chính",
+      "youtube_video_category_ids": [],
+      "anchors": ["kinh doanh", "tài chính", "startup", "khởi nghiệp", "marketing", "bán hàng", "đầu tư", "chứng khoán", "cổ phiếu", "bất động sản", "finance", "business", "investing", "freelance", "kiếm tiền", "thanh lý", "xả kho", "vỡ nợ", "lượt xem kiếm được bao nhiêu"],
+      "entities": ["hồ mạnh thắng official"],
+      "support": ["tiền", "youtube", "shop", "kho", "thu nhập"]
+    },
+    {
+      "id": "health_fitness",
+      "name_vi": "Sức khỏe & Thể chất",
+      "youtube_video_category_ids": [],
+      "anchors": ["sức khỏe", "fitness", "workout", "gym", "chạy bộ", "yoga", "dinh dưỡng", "thiền", "meditation", "sleep", "giấc ngủ", "medical", "wellness"],
+      "entities": [],
+      "support": ["hệ thần kinh", "thư giãn", "relax"]
+    },
+    {
+      "id": "food_cooking",
+      "name_vi": "Ẩm thực",
+      "youtube_video_category_ids": [],
+      "anchors": ["ẩm thực", "nấu ăn", "công thức", "món ăn", "quán ăn", "ăn gì", "food", "cooking", "recipe", "street food", "restaurant", "food review", "baking", "mukbang"],
+      "entities": ["dom bi review"],
+      "support": ["đặc sản", "ăn sáng", "quán", "cà phê", "coffee"]
+    }
+  ],
+  "intents": {
+    "tutorial": {"name_vi": "Hướng dẫn", "anchors": ["hướng dẫn", "cách làm", "tutorial", "how to", "từ a-z", "nâng cấp kỹ năng"]},
+    "review": {"name_vi": "Đánh giá/Review", "anchors": ["review", "liệu có ngon", "unbox", "đánh giá"]},
+    "news": {"name_vi": "Tin tức", "anchors": ["tin ", "tin tức", "thời sự", "breaking", "xung đột", "ngày "]},
+    "livestream": {"name_vi": "Phát trực tiếp", "anchors": ["live", "trực tiếp"]},
+    "compilation": {"name_vi": "Tổng hợp/Playlist", "anchors": ["playlist", "tuyển tập", "best of", "合集", "top ", "mix", "mashup"]},
+    "documentary": {"name_vi": "Tài liệu", "anchors": ["documentary", "thước phim", "toàn cảnh"]},
+    "entertainment": {"name_vi": "Giải trí/Show", "anchors": ["running man", "sao nhập ngũ", "tinh hà say hi", "dance battle", "gameshow", "game show"]},
+    "analysis": {"name_vi": "Phân tích/Bình luận", "anchors": ["bình luận", "tại sao", "sự thật", "chiến lược", "kinh nghiệm"]}
+  }
+}
