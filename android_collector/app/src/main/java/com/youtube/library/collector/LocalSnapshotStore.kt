@@ -48,6 +48,10 @@ class LocalSnapshotStore(private val context: Context) {
             .putLong("last_capture_epoch_ms", System.currentTimeMillis())
             .putString("last_surface", surface)
             .apply()
+
+        // Network sync is independent of collection. The snapshot is already
+        // safely stored above; if upload fails AndroidAutoSync keeps it queued.
+        AndroidAutoSync.enqueueSnapshot(context, snapshot)
         return true
     }
 
