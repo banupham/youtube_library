@@ -1,0 +1,14 @@
+# Local browser profile contains cookies/session data. Never commit it.
+data/browser_profile/
+
+# Personalized YouTube Home snapshots/results are local by default.
+data/home_snapshots/*.json
+data/home_classified/*.json
+
+# Keep directory placeholders tracked.
+!data/home_snapshots/.gitkeep
+!data/home_classified/.gitkeep
+
+# Python cache
+__pycache__/
+*.pyc
