@@ -10,6 +10,11 @@
     return `${y}-${m}-${d}`;
   }
 
+  async function passiveEnabled() {
+    const stored = await chrome.storage.local.get(['passiveAutoEnabled']);
+    return stored.passiveAutoEnabled !== false;
+  }
+
   function text(root, selectors) {
     for (const selector of selectors) {
       const value = root?.querySelector?.(selector)?.textContent?.trim();
@@ -137,8 +142,7 @@
   }
 
   async function sendSnapshot(kind, payload) {
-    const stored = await chrome.storage.local.get(['passiveAutoEnabled']);
-    if (!stored.passiveAutoEnabled) return;
+    if (!(await passiveEnabled())) return;
     const quotaState = await quotaAllows(kind);
     if (!quotaState.allowed) return;
     try {
@@ -154,7 +158,7 @@
 
   async function captureHome(generation) {
     await new Promise((resolve) => setTimeout(resolve, 25000));
-    if (generation !== routeGeneration || location.pathname !== '/') return;
+    if (generation !== routeGeneration || location.pathname !== '/' || !(await passiveEnabled())) return;
     const items = extractVideoCards(document, 100);
     if (!items.length) return;
     await sendSnapshot('home', {
@@ -170,7 +174,7 @@
 
   async function captureWatch(generation) {
     await new Promise((resolve) => setTimeout(resolve, 10000));
-    if (generation !== routeGeneration || location.pathname !== '/watch') return;
+    if (generation !== routeGeneration || location.pathname !== '/watch' || !(await passiveEnabled())) return;
     const parentVideoId = new URL(location.href).searchParams.get('v');
     if (!/^[A-Za-z0-9_-]{11}$/.test(parentVideoId || '')) return;
     const items = extractWatchUpNext(30);
@@ -192,7 +196,7 @@
 
   async function captureSubscriptions(generation) {
     await new Promise((resolve) => setTimeout(resolve, 18000));
-    if (generation !== routeGeneration || location.pathname !== '/feed/subscriptions') return;
+    if (generation !== routeGeneration || location.pathname !== '/feed/subscriptions' || !(await passiveEnabled())) return;
     const items = extractVideoCards(document, 80);
     if (!items.length) return;
     await sendSnapshot('subscriptions', {
@@ -209,7 +213,7 @@
 
   async function captureChannels(generation) {
     await new Promise((resolve) => setTimeout(resolve, 12000));
-    if (generation !== routeGeneration || location.pathname !== '/feed/channels') return;
+    if (generation !== routeGeneration || location.pathname !== '/feed/channels' || !(await passiveEnabled())) return;
     const channels = extractSubscribedChannels(200);
     if (!channels.length) return;
     await sendSnapshot('channels', {
@@ -224,7 +228,8 @@
     });
   }
 
-  function scheduleForCurrentRoute() {
+  async function scheduleForCurrentRoute() {
+    if (!(await passiveEnabled())) return;
     routeGeneration += 1;
     const generation = routeGeneration;
     if (location.pathname === '/') captureHome(generation);
@@ -233,8 +238,15 @@
     else if (location.pathname === '/feed/channels') captureChannels(generation);
   }
 
-  chrome.storage.local.get(['passiveAutoEnabled']).then((stored) => {
-    if (stored.passiveAutoEnabled) scheduleForCurrentRoute();
+  scheduleForCurrentRoute();
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local' || !changes.passiveAutoEnabled) return;
+    if (changes.passiveAutoEnabled.newValue === false) {
+      routeGeneration += 1;
+      return;
+    }
+    scheduleForCurrentRoute();
   });
 
   setInterval(() => {
