@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>YouTube Home Collector</title>
+  <style>
+    body { font-family: Arial, sans-serif; width: 320px; margin: 14px; }
+    label { display: block; margin-top: 10px; font-size: 13px; }
+    input { width: 100%; box-sizing: border-box; padding: 7px; margin-top: 4px; }
+    button { width: 100%; margin-top: 14px; padding: 10px; cursor: pointer; }
+    #status { margin-top: 12px; white-space: pre-wrap; font-size: 12px; line-height: 1.4; }
+    .hint { color: #555; font-size: 12px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <strong>YouTube Home Collector</strong>
+  <p class="hint">Dùng ngay profile trình duyệt hiện tại. Chỉ đọc card Home và scroll, không click/play video.</p>
+
+  <label>
+    Số lần scroll
+    <input id="scrolls" type="number" min="0" max="50" value="8">
+  </label>
+
+  <label>
+    Delay mỗi scroll (ms)
+    <input id="delay" type="number" min="200" max="10000" value="1500">
+  </label>
+
+  <button id="collect">Collect + classify</button>
+  <div id="status">Bridge cần chạy tại 127.0.0.1:8765.</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
