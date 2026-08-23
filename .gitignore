@@ -1,8 +1,9 @@
 # Local browser profile contains cookies/session data. Never commit it.
 data/browser_profile/
 
-# Local collector identity is random but still installation-specific.
+# Local collector identity/sync state are installation-specific.
 data/collector_identity.json
+data/community_sync_state.json
 
 # Personalized YouTube recommendation snapshots/results are local by default.
 data/home_snapshots/**/*.json
