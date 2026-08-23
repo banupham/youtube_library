@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/banupham/youtube_library/schemas/viewer_robot.v1.schema.json",
+  "title": "YouTube Library Viewer Robot v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "viewer_id",
+    "seed_source",
+    "random_seed",
+    "interest_model",
+    "preference_model",
+    "simulation_state"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "viewer_id": {"type": "string", "minLength": 8},
+    "seed_source": {"enum": ["pure_synthetic", "observed_profile_prior"]},
+    "random_seed": {"type": "integer", "minimum": 0},
+    "created_at": {"type": "string"},
+    "lineage": {
+      "type": "object",
+      "properties": {
+        "generator_version": {"type": "string"},
+        "master_seed": {"type": "integer", "minimum": 0},
+        "viewer_index": {"type": "integer", "minimum": 0},
+        "source_profile_id": {"type": ["string", "null"]},
+        "source_profile_short_id": {"type": ["string", "null"]},
+        "source_profile_name": {"type": ["string", "null"]},
+        "source_analysis_version": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "interest_model": {
+      "type": "object",
+      "required": ["category_vector", "primary_interests", "secondary_interests", "low_interests", "exploration_interests"],
+      "properties": {
+        "category_vector": {
+          "type": "object",
+          "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "primary_interests": {"type": "array", "items": {"$ref": "#/$defs/weightedInterest"}, "minItems": 1},
+        "secondary_interests": {"type": "array", "items": {"$ref": "#/$defs/weightedInterest"}},
+        "low_interests": {"type": "array", "items": {"$ref": "#/$defs/weightedInterest"}},
+        "exploration_interests": {"type": "array", "items": {"$ref": "#/$defs/weightedInterest"}},
+        "topic_vector": {
+          "type": "object",
+          "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      },
+      "additionalProperties": true
+    },
+    "preference_model": {
+      "type": "object",
+      "required": ["exploration_rate", "novelty_tolerance", "diversity_preference", "stability_preference", "intent_preferences"],
+      "properties": {
+        "exploration_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "novelty_tolerance": {"type": "number", "minimum": 0, "maximum": 1},
+        "diversity_preference": {"type": "number", "minimum": 0, "maximum": 1},
+        "stability_preference": {"type": "number", "minimum": 0, "maximum": 1},
+        "intent_preferences": {
+          "type": "object",
+          "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      },
+      "additionalProperties": true
+    },
+    "simulation_state": {
+      "type": "object",
+      "required": ["step", "interaction_count", "last_video_id", "state_version"],
+      "properties": {
+        "step": {"type": "integer", "minimum": 0},
+        "interaction_count": {"type": "integer", "minimum": 0},
+        "last_video_id": {"type": ["string", "null"]},
+        "state_version": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "weightedInterest": {
+      "type": "object",
+      "required": ["id", "name_vi", "weight"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "name_vi": {"type": "string"},
+        "weight": {"type": "number", "minimum": 0, "maximum": 1},
+        "source": {"type": "string"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
