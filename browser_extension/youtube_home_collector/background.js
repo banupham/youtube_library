@@ -1,5 +1,5 @@
-const BRIDGE_BASE = 'http://127.0.0.1:8765';
-const COLLECTOR_VERSION = '0.6.1';
+const CENTRAL_BASE = 'http://127.0.0.1:8770';
+const COLLECTOR_VERSION = '0.6.2';
 
 function createProfileId() {
   if (globalThis.crypto?.randomUUID) return `browser-${crypto.randomUUID()}`;
@@ -46,8 +46,8 @@ async function ensureCollectorProfile() {
   };
 }
 
-async function postBridge(endpoint, payload) {
-  const response = await fetch(`${BRIDGE_BASE}${endpoint}`, {
+async function postCentral(endpoint, payload) {
+  const response = await fetch(`${CENTRAL_BASE}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -55,7 +55,7 @@ async function postBridge(endpoint, payload) {
   if (!response.ok) {
     let detail = '';
     try { detail = await response.text(); } catch { detail = ''; }
-    throw new Error(`Bridge HTTP ${response.status}${detail ? `: ${detail.slice(0, 180)}` : ''}`);
+    throw new Error(`Central HTTP ${response.status}${detail ? `: ${detail.slice(0, 180)}` : ''}`);
   }
   return response.json();
 }
@@ -94,12 +94,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       mode: 'passive_natural_navigation',
       collector_version: COLLECTOR_VERSION,
       auto_start_policy: 'enabled_by_default_on_extension_install',
+      central_server: CENTRAL_BASE,
       tab_url: sender?.tab?.url || payload.page_url || null
     };
 
     try {
-      const collectResult = await postBridge('/collect', payload);
-      const finalResult = await postBridge('/finalize', {
+      const collectResult = await postCentral('/collect', payload);
+      const finalResult = await postCentral('/finalize', {
         collector_profile: profile,
         collection_session_id: sessionId
       });
@@ -109,7 +110,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       sendResponse({ ok: true, collect: collectResult, finalize: finalResult });
     } catch (error) {
-      console.warn('Passive collector bridge sync failed', error);
+      console.warn('Passive collector central sync failed', error);
       sendResponse({ ok: false, error: String(error?.message || error) });
     }
   })();
