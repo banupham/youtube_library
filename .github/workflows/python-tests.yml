@@ -22,6 +22,7 @@ jobs:
           python -m py_compile scripts/community/build_community_report.py
           python -m py_compile scripts/community/submit_profile.py
           python -m py_compile scripts/community/community_server.py
+          python -m py_compile scripts/community/collector_agent.py
       - name: Validate JSON seed/schema files
         run: |
           python -m json.tool taxonomy/interest_relations.v1.json > /dev/null
