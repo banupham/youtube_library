@@ -19,6 +19,7 @@ class YouTubeAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        CollectorSettings.ensureIdentity(this)
         snapshotStore = LocalSnapshotStore(this)
 
         serviceInfo = serviceInfo.apply {
@@ -30,13 +31,16 @@ class YouTubeAccessibilityService : AccessibilityService() {
             notificationTimeout = 750
             flags = flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
         }
+
+        // Retry queued uploads whenever Android reconnects the service.
+        AndroidAutoSync.flushAsync(this)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.packageName?.toString() != YOUTUBE_PACKAGE) return
-        val prefs = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE)
-        if (!prefs.getBoolean(MainActivity.KEY_DISCLOSURE_ACCEPTED, false)) return
-        if (prefs.getBoolean(MainActivity.KEY_PAUSED, false)) return
+        val prefs = getSharedPreferences(CollectorSettings.PREFS, MODE_PRIVATE)
+        if (!prefs.getBoolean(CollectorSettings.KEY_DISCLOSURE_ACCEPTED, false)) return
+        if (prefs.getBoolean(CollectorSettings.KEY_PAUSED, false)) return
 
         pendingEventType = event.eventType
         handler.removeCallbacks(captureRunnable)
