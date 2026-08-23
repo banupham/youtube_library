@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ANDROID = ROOT / "android_collector" / "app" / "src" / "main"
+KOTLIN = ANDROID / "java" / "com" / "youtube" / "library" / "collector"
 
 
 class AndroidCollectorGuardrailTests(unittest.TestCase):
@@ -14,6 +15,13 @@ class AndroidCollectorGuardrailTests(unittest.TestCase):
         self.assertEqual(payload["properties"]["source_package"]["const"], "com.google.android.youtube")
         self.assertEqual(payload["properties"]["extraction_mode"]["const"], "android_accessibility_node_tree_read_only")
 
+    def test_android_ingest_schema_is_valid_json(self):
+        path = ROOT / "schemas" / "android_snapshot_ingest.v1.schema.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        snapshot = payload["properties"]["snapshot"]["properties"]
+        self.assertEqual(snapshot["source_package"]["const"], "com.google.android.youtube")
+        self.assertEqual(snapshot["platform"]["const"], "android")
+
     def test_accessibility_service_is_youtube_only(self):
         xml = (ANDROID / "res" / "xml" / "accessibility_service_config.xml").read_text(encoding="utf-8")
         self.assertIn('android:packageNames="com.google.android.youtube"', xml)
@@ -21,7 +29,7 @@ class AndroidCollectorGuardrailTests(unittest.TestCase):
         self.assertIn('android:isAccessibilityTool="false"', xml)
 
     def test_service_has_no_interaction_apis(self):
-        kotlin = (ANDROID / "java" / "com" / "youtube" / "library" / "collector" / "YouTubeAccessibilityService.kt").read_text(encoding="utf-8")
+        kotlin = (KOTLIN / "YouTubeAccessibilityService.kt").read_text(encoding="utf-8")
         forbidden = [
             "performAction(",
             "dispatchGesture(",
@@ -33,11 +41,17 @@ class AndroidCollectorGuardrailTests(unittest.TestCase):
         for token in forbidden:
             self.assertNotIn(token, kotlin, token)
 
-    def test_manifest_does_not_request_network_or_overlay_permissions(self):
+    def test_manifest_network_is_limited_to_internet_without_overlay_or_package_scan(self):
         manifest = (ANDROID / "AndroidManifest.xml").read_text(encoding="utf-8")
-        self.assertNotIn("android.permission.INTERNET", manifest)
+        self.assertIn("android.permission.INTERNET", manifest)
         self.assertNotIn("android.permission.SYSTEM_ALERT_WINDOW", manifest)
         self.assertNotIn("QUERY_ALL_PACKAGES", manifest)
+
+    def test_auto_sync_uses_dedicated_android_ingest_endpoint(self):
+        kotlin = (KOTLIN / "AndroidAutoSync.kt").read_text(encoding="utf-8")
+        self.assertIn('"/v1/android/snapshot"', kotlin)
+        self.assertIn("Authorization", kotlin)
+        self.assertIn("pending.jsonl", kotlin)
 
 
 if __name__ == "__main__":
