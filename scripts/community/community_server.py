@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Receive sanitized profile summaries and rebuild the creator community report.
+"""Central ingestion gateway for community profiles and Android collector snapshots.
 
-This is intentionally a small ingestion gateway. It never receives YouTube
-cookies, account credentials, raw Home/Up Next rows, subscribed-channel names,
-or other browsing/session secrets under the v1 submission contract.
+Two evidence layers are intentionally separated:
+
+* POST /v1/profile accepts sanitized profile summaries and rebuilds the creator
+  community report.
+* POST /v1/android/snapshot accepts bounded raw Accessibility snapshots from
+  consenting Android collectors and stores them in a separate ingest area.
+  Raw Android snapshots are NOT fed directly into the creator report. They must
+  first pass through the Android parser/profile engine and later be submitted as
+  sanitized /v1/profile records.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -20,6 +27,9 @@ from pathlib import Path
 
 MAX_BODY_BYTES = 2_000_000
 ALLOWED_PLATFORMS = {"browser", "android", "other"}
+YOUTUBE_ANDROID_PACKAGE = "com.google.android.youtube"
+ANDROID_EXTRACTION_MODE = "android_accessibility_node_tree_read_only"
+DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,6 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8770)
     parser.add_argument("--input-dir", default="data/community_profiles")
+    parser.add_argument("--android-ingest-dir", default="data/android_ingest")
     parser.add_argument("--report-json", default="data/community_reports/current.json")
     parser.add_argument("--report-html", default="data/community_reports/current.html")
     return parser.parse_args()
@@ -99,6 +110,85 @@ def validate_submission(payload: object) -> list[str]:
     return errors
 
 
+def validate_android_ingest(payload: object) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["payload must be an object"]
+    errors: list[str] = []
+    for key in ("schema_version", "participant_id", "device_id", "profile_slot", "sent_at", "snapshot"):
+        if key not in payload:
+            errors.append(f"missing {key}")
+    if payload.get("schema_version") != "1.0.0":
+        errors.append("unsupported schema_version")
+
+    for key, minimum, maximum in (
+        ("participant_id", 4, 200),
+        ("device_id", 4, 200),
+        ("profile_slot", 1, 120),
+    ):
+        value = str(payload.get(key) or "")
+        if not minimum <= len(value) <= maximum:
+            errors.append(f"invalid {key}")
+
+    snapshot = payload.get("snapshot")
+    if not isinstance(snapshot, dict):
+        errors.append("snapshot must be an object")
+        return errors
+
+    if snapshot.get("schema_version") != "1.0.0":
+        errors.append("unsupported snapshot.schema_version")
+    if snapshot.get("platform") != "android":
+        errors.append("snapshot.platform must be android")
+    if snapshot.get("source_package") != YOUTUBE_ANDROID_PACKAGE:
+        errors.append("snapshot.source_package must be YouTube Android")
+    if snapshot.get("extraction_mode") != ANDROID_EXTRACTION_MODE:
+        errors.append("invalid snapshot.extraction_mode")
+
+    captured_at = str(snapshot.get("captured_at") or "")
+    if len(captured_at) < 10 or not DAY_RE.match(captured_at[:10]):
+        errors.append("invalid snapshot.captured_at")
+
+    signature = str(snapshot.get("tree_signature") or "")
+    if not 8 <= len(signature) <= 128:
+        errors.append("invalid snapshot.tree_signature")
+
+    nodes = snapshot.get("nodes")
+    if not isinstance(nodes, list):
+        errors.append("snapshot.nodes must be a list")
+    elif len(nodes) > 450:
+        errors.append("snapshot.nodes exceeds 450")
+
+    try:
+        node_count = int(snapshot.get("node_count"))
+        if not 0 <= node_count <= 450:
+            errors.append("snapshot.node_count outside [0,450]")
+        elif isinstance(nodes, list) and node_count != len(nodes):
+            errors.append("snapshot.node_count does not match nodes length")
+    except (TypeError, ValueError):
+        errors.append("invalid snapshot.node_count")
+
+    surface = snapshot.get("surface_guess")
+    if not isinstance(surface, dict) or not str(surface.get("surface") or ""):
+        errors.append("invalid snapshot.surface_guess")
+    return errors
+
+
+def file_contains_tree_signature(path: Path, signature: str) -> bool:
+    if not path.exists():
+        return False
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if str((row.get("snapshot") or {}).get("tree_signature") or "") == signature:
+                    return True
+    except OSError:
+        return False
+    return False
+
+
 def main() -> None:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[2]
@@ -108,10 +198,12 @@ def main() -> None:
         return path if path.is_absolute() else repo_root / path
 
     input_dir = resolve(args.input_dir)
+    android_ingest_dir = resolve(args.android_ingest_dir)
     report_json = resolve(args.report_json)
     report_html = resolve(args.report_html)
     report_builder = repo_root / "scripts" / "community" / "build_community_report.py"
     input_dir.mkdir(parents=True, exist_ok=True)
+    android_ingest_dir.mkdir(parents=True, exist_ok=True)
     report_json.parent.mkdir(parents=True, exist_ok=True)
     token = os.environ.get("YT_LIBRARY_COMMUNITY_TOKEN")
     write_lock = threading.Lock()
@@ -133,7 +225,7 @@ def main() -> None:
         )
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "YouTubeLibraryCommunity/1.0"
+        server_version = "YouTubeLibraryCommunity/1.1"
 
         def _json(self, status: int, payload: dict) -> None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -148,36 +240,58 @@ def main() -> None:
                 return True
             return self.headers.get("Authorization") == f"Bearer {token}"
 
+        def _read_json_body(self) -> object | None:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                self._json(400, {"error": "invalid_content_length"})
+                return None
+            if length <= 0 or length > MAX_BODY_BYTES:
+                self._json(413, {"error": "invalid_body_size"})
+                return None
+            try:
+                return json.loads(self.rfile.read(length).decode("utf-8"))
+            except Exception as exc:
+                self._json(400, {"error": "invalid_json", "detail": str(exc)})
+                return None
+
         def do_GET(self) -> None:  # noqa: N802
             if self.path == "/health":
-                self._json(200, {"ok": True, "service": "community", "version": "1.0.0"})
+                self._json(
+                    200,
+                    {
+                        "ok": True,
+                        "service": "community",
+                        "version": "1.1.0",
+                        "profile_ingest": "/v1/profile",
+                        "android_snapshot_ingest": "/v1/android/snapshot",
+                    },
+                )
                 return
             self._json(404, {"error": "not_found"})
 
         def do_POST(self) -> None:  # noqa: N802
-            if self.path != "/v1/profile":
+            if self.path not in {"/v1/profile", "/v1/android/snapshot"}:
                 self._json(404, {"error": "not_found"})
                 return
             if not self._authorized():
                 self._json(401, {"error": "unauthorized"})
                 return
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-            except ValueError:
-                self._json(400, {"error": "invalid_content_length"})
+            payload = self._read_json_body()
+            if payload is None:
                 return
-            if length <= 0 or length > MAX_BODY_BYTES:
-                self._json(413, {"error": "invalid_body_size"})
-                return
-            try:
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            except Exception as exc:
-                self._json(400, {"error": "invalid_json", "detail": str(exc)})
-                return
+
+            if self.path == "/v1/android/snapshot":
+                self._handle_android_snapshot(payload)
+            else:
+                self._handle_profile(payload)
+
+        def _handle_profile(self, payload: object) -> None:
             errors = validate_submission(payload)
             if errors:
                 self._json(400, {"error": "invalid_submission", "details": errors[:20]})
                 return
+            assert isinstance(payload, dict)
 
             participant_id = str(payload["participant_id"])
             profile_key = str(payload["profile_key"])
@@ -204,13 +318,56 @@ def main() -> None:
                 },
             )
 
+        def _handle_android_snapshot(self, payload: object) -> None:
+            errors = validate_android_ingest(payload)
+            if errors:
+                self._json(400, {"error": "invalid_android_snapshot", "details": errors[:20]})
+                return
+            assert isinstance(payload, dict)
+            snapshot = payload["snapshot"]
+            assert isinstance(snapshot, dict)
+
+            participant_id = str(payload["participant_id"])
+            device_id = str(payload["device_id"])
+            profile_slot = str(payload["profile_slot"])
+            day = str(snapshot["captured_at"])[:10]
+            signature = str(snapshot["tree_signature"])
+            surface = str((snapshot.get("surface_guess") or {}).get("surface") or "unknown")
+
+            participant_dir = android_ingest_dir / f"participant_{safe_short(participant_id)}"
+            device_dir = participant_dir / (
+                f"device_{safe_short(device_id)}__slot_{safe_short(profile_slot)}"
+            )
+            path = device_dir / f"{day}.jsonl"
+
+            with write_lock:
+                device_dir.mkdir(parents=True, exist_ok=True)
+                duplicate = file_contains_tree_signature(path, signature)
+                if not duplicate:
+                    with path.open("a", encoding="utf-8") as handle:
+                        handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+            self._json(
+                200,
+                {
+                    "ok": True,
+                    "duplicate": duplicate,
+                    "tree_signature": signature,
+                    "surface": surface,
+                    "stored_day": day,
+                    "profile_report_updated": False,
+                },
+            )
+
         def log_message(self, format: str, *values: object) -> None:
             print(f"[community] {self.address_string()} - {format % values}")
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"YouTube Library Community Server v1.0: http://{args.host}:{args.port}")
-    print("POST /v1/profile accepts sanitized profile summaries only")
+    print(f"YouTube Library Community Server v1.1: http://{args.host}:{args.port}")
+    print("POST /v1/profile accepts sanitized profile summaries")
+    print("POST /v1/android/snapshot accepts bounded Android Accessibility snapshots")
     print(f"Community profiles -> {input_dir}")
+    print(f"Android raw ingest -> {android_ingest_dir}")
     print(f"Creator report -> {report_html}")
     if token:
         print("Bearer token: REQUIRED (YT_LIBRARY_COMMUNITY_TOKEN)")
