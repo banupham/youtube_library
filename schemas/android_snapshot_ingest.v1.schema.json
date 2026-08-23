@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtube-library.local/schemas/android_snapshot_ingest.v1.schema.json",
+  "title": "YouTube Library Android Snapshot Ingest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "participant_id",
+    "device_id",
+    "profile_slot",
+    "sent_at",
+    "snapshot"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "participant_id": {"type": "string", "minLength": 4, "maxLength": 200},
+    "device_id": {"type": "string", "minLength": 4, "maxLength": 200},
+    "profile_slot": {"type": "string", "minLength": 1, "maxLength": 120},
+    "sent_at": {"type": "string", "minLength": 10, "maxLength": 80},
+    "snapshot": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "platform",
+        "source_package",
+        "captured_at",
+        "extraction_mode",
+        "surface_guess",
+        "tree_signature",
+        "node_count",
+        "nodes"
+      ],
+      "properties": {
+        "schema_version": {"const": "1.0.0"},
+        "platform": {"const": "android"},
+        "source_package": {"const": "com.google.android.youtube"},
+        "captured_at": {"type": "string"},
+        "extraction_mode": {"const": "android_accessibility_node_tree_read_only"},
+        "tree_signature": {"type": "string", "minLength": 8, "maxLength": 128},
+        "node_count": {"type": "integer", "minimum": 0, "maximum": 450},
+        "surface_guess": {"type": "object"},
+        "nodes": {"type": "array", "maxItems": 450}
+      }
+    }
+  }
+}
