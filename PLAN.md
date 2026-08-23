@@ -2,73 +2,223 @@
 
 > Cập nhật: 2026-08-23
 >
-> Đây là checkpoint canonical để tiếp tục dự án. Roadmap gốc vẫn ở `PROJECT_PLAN.md`.
+> Đây là checkpoint canonical. `PROJECT_PLAN.md` giữ roadmap gốc; file này phản ánh kiến trúc đã được chỉnh theo dữ liệu thực tế.
 
-# 1. Mục tiêu hệ thống đã chốt
+# 1. Kiến trúc canonical mới
 
-`youtube_library` có ba population phải tách biệt:
+Trục chính của dự án không phải “một người test nhiều profile rồi nhân thành audience synthetic”.
 
-```text
-A. OBSERVED PROJECT PROFILES
-   browser profiles được theo dõi read-only
-   → Home / Up Next / Subscriptions / longitudinal state
-
-B. SYNTHETIC VIEWER ROBOTS
-   viewer mô phỏng hoàn toàn offline
-   → feed simulation / interaction / interest learning
-
-C. EXTERNAL REAL AUDIENCE
-   người xem thật ngoài dự án
-   → không kiểm soát
-```
-
-Creator-facing mục tiêu cuối là:
+Trục chính là một **consenting distributed profile panel**:
 
 ```text
-Observed profile panel
-+
-Synthetic audience model
-+
-Creator content candidate
-↓
-Audience-fit / cohort-coverage estimate
-↓
-Creator chọn nội dung để xuất bản organically
-↓
-External real audience phản hồi tự nhiên
-↓
-Optional creator-owned analytics để calibrate model
+PARTICIPANT A                 PARTICIPANT B                 PARTICIPANT C
+browser / future Android     browser / future Android     browser / future Android
+      │                             │                             │
+      ▼                             ▼                             ▼
+PASSIVE READ-ONLY COLLECTOR   PASSIVE READ-ONLY COLLECTOR   PASSIVE READ-ONLY COLLECTOR
+      │                             │                             │
+      ▼                             ▼                             ▼
+LOCAL PROFILE ENGINE          LOCAL PROFILE ENGINE          LOCAL PROFILE ENGINE
+Home / Up Next / Subs         Home / Up Next / Subs         Home / Up Next / Subs
+Today / 7d / 30d / Long       Today / 7d / 30d / Long       Today / 7d / 30d / Long
+      │                             │                             │
+      └──────── sanitized profile summaries ─────────────────────┘
+                                    │
+                                    ▼
+                         COMMUNITY INGESTION SERVER
+                                    │
+                                    ▼
+                     PARTICIPANT-BALANCED AGGREGATION
+                                    │
+                                    ▼
+                         CREATOR COMMUNITY INTELLIGENCE
 ```
 
-Không dùng observed project profiles hoặc synthetic robots để tạo view/click/like/comment/subscription thật.
+Creator cuối cùng chỉ cần biết:
+
+```text
+cộng đồng hiện có bao nhiêu participants / profiles
+content lane nào đang xuất hiện ở nhiều participants
+key/keyword nào là core
+creator tags nào lặp lại
+key nào đang rising/emerging để mở rộng
+intent/format nào phù hợp
+lane nào nên anchor / bridge / controlled expansion
+mức certainty / limitation của panel
+```
+
+Không gọi các score này là xác suất YouTube recommendation/view.
 
 ---
 
-# 2. Trạng thái roadmap hiện tại
+# 2. Participant khác Profile
+
+Đây là quy tắc bắt buộc.
 
 ```text
-Phase 5   Video Content Classification        MVP usable
-Phase 5.5 Longitudinal Profile Evolution      core implemented, validation continues
-Phase 6   Initial Viewer / Viewer Robot        ACTIVE — MVP slice 1 implemented
-Phase 7   Offline Feed Simulation              next after Phase 6 validation
-Phase 8   Synthetic Interaction Simulation     pending
-Phase 9   Interest Learning                    pending
+Participant A
+├── Profile A1
+├── Profile A2
+└── Profile A3
+
+Participant B
+└── Profile B1
 ```
 
-Phase 5.5 không còn chặn việc code Phase 6. Daily profile validation 3–7 ngày có thể tiếp tục song song.
+Không được coi ví dụ trên là 4 người độc lập.
+
+Community engine dùng **participant-balanced weighting**:
+
+```text
+mỗi participant = cùng một tổng community weight
+nhiều profile cùng participant
+→ chia tổng weight đó theo profile quality/certainty
+```
+
+Creator report luôn hiển thị cả:
+
+```text
+participant_count
+profile_count
+usable_participant_count
+usable_profile_count
+```
+
+Một tester có nhiều profile vẫn hữu ích để nghiên cứu recommendation states, nhưng không được làm community sample giả lớn hơn số người tham gia thật.
 
 ---
 
-# 3. Phase 5.5 checkpoint
+# 3. Dữ liệu thật hiện tại lấy từ đâu
 
-Current observed profile pipeline:
+Observed data là dữ liệu YouTube thật trả về trên các profile mà participant tự sử dụng và cho phép collector đọc.
+
+Browser profile hiện có thể đóng góp:
+
+```text
+Home recommendation exposure
+Up Next recommendation exposure
+Subscriptions feed / subscribed-channel affinity
+Daily longitudinal evolution
+```
+
+YouTube Data API enrichment có thể bổ sung:
+
+```text
+description
+tags
+categoryId
+topicDetails
+publishedAt
+views
+likes
+comments
+```
+
+Raw observations vẫn là panel evidence, không phải đại diện mặc định cho toàn bộ YouTube audience.
+
+---
+
+# 4. Natural/passive browser collector — extension 0.6.0
+
+Extension hiện có hai mode.
+
+## 4.1 Passive natural-use mode — ưu tiên
+
+Opt-in một lần trong popup:
+
+```text
+Bật passive collection tự động
+```
+
+Sau đó participant dùng YouTube bình thường.
+
+Collector KHÔNG:
+
+```text
+tự mở tab
+tự mở video
+tự play
+tự click
+tự like/comment/subscribe
+```
+
+Collector chỉ đọc surface participant tự truy cập.
+
+### Home
+
+Participant tự mở Home và tự scroll.
+
+Sau khoảng thời gian quan sát, extension đọc các video card đã load trong DOM.
+
+Daily cap ban đầu:
+
+```text
+Home <= 2 passive snapshots/day
+```
+
+Không auto-scroll trong passive mode.
+
+### Up Next
+
+Participant tự mở một video/watch page.
+
+Extension chờ page load rồi đọc recommendation DOM trong secondary column.
+
+```text
+/watch?v=...
+→ passive Up Next snapshot
+```
+
+Không request random watch page/replay trong passive mode.
+
+Daily cap ban đầu:
+
+```text
+<= 8 naturally opened watch pages/day
+```
+
+### Subscriptions
+
+Nếu participant tự mở:
+
+```text
+/feed/subscriptions
+/feed/channels
+```
+
+collector có thể đọc read-only snapshot tương ứng.
+
+Daily cap:
+
+```text
+Subscriptions <= 1/day
+Channels <= 1/day
+```
+
+## 4.2 Manual fallback
+
+Pipeline manual cũ vẫn giữ để debug/test:
+
+```text
+manual Home scroll
+manual Subscriptions fetch
+random Home seed → watch HTML replay
+```
+
+Manual replay không phải nguồn natural panel ưu tiên về lâu dài.
+
+---
+
+# 5. Local Profile Engine — Phase 5.5
+
+Mỗi participant/device vẫn xử lý profile local trước.
 
 ```text
 Home
 +
-Up Next replay
+Up Next
 +
-Subscriptions read-only
+Subscriptions
 ↓
 API enrichment
 ↓
@@ -78,22 +228,22 @@ session profile
 ↓
 daily observation
 ↓
-Today / 7d / 30d / Long-term decay
+Today / 7d / 30d / Long-term
 ↓
-trend states
+trend state
 ↓
 current longitudinal profile
 ```
 
-Current extension / bridge:
+Current files:
 
 ```text
-extension 0.5.0
-bridge 0.8
-temporal profile analysis 2.5.0
+data/profile_library/profile_<id>.json
+data/profile_library/profile_<id>.history.jsonl
+data/profile_library/daily/profile_<id>/YYYY-MM-DD.json
 ```
 
-Trend states:
+Temporal states:
 
 ```text
 baseline
@@ -105,550 +255,508 @@ dormant
 revived
 ```
 
-Observed profile current state:
+Current versions:
 
 ```text
-data/profile_library/profile_<id>.json
+extension                         0.6.0
+local bridge                      0.8
+longitudinal profile analysis     2.5.0
+session creator profile           2.1.0
 ```
 
-Daily observations:
-
-```text
-data/profile_library/daily/profile_<id>/YYYY-MM-DD.json
-```
-
-Phase 5.5 validation vẫn cần kiểm tra trên dữ liệu thật nhiều ngày, nhưng không thêm feature lớn trừ bug rõ ràng.
+Phase 5.5 validation nhiều ngày vẫn tiếp tục.
 
 ---
 
-# 4. Phase 6 — Viewer Robot: mục tiêu
+# 6. Privacy-preserving community submission
 
-Viewer Robot là **offline synthetic entity**.
+Raw browser/account data không cần gửi lên server trung tâm.
 
-Một robot ban đầu cần có:
-
-```text
-category interest vector
-primary interests
-secondary/adjacent interests
-low/background interests
-exploration interests
-intent preferences
-exploration rate
-novelty tolerance
-diversity preference
-stability preference
-simulation state
-reproducible random lineage
-```
-
-Không random 18 category độc lập/đều nhau.
-
-Structured generation:
+Schema:
 
 ```text
-primary content family
-↓
-relationship graph
-↓
-adjacent interests
-↓
-small exploration/background interests
-↓
-normalized viewer vector
+schemas/community_profile_submission.v1.schema.json
 ```
 
----
-
-# 5. Phase 6 seed modes
-
-## 5.1 Pure synthetic
+Submitter:
 
 ```text
-18-category taxonomy
-+
-seed interest relationship graph
-+
-master random seed
-↓
-synthetic cohort
+scripts/community/submit_profile.py
 ```
 
-Dùng để tạo population không phụ thuộc browser profile thật.
-
-## 5.2 Observed-profile-prior seeded
+Mỗi local installation tự tạo random:
 
 ```text
-longitudinal profile_library/profile_<id>.json
-+
-controlled perturbation
-+
-adjacent exploration graph
-+
-master random seed
-↓
-synthetic cohort quanh observed profile prior
+participant_id
+device_id
 ```
 
-Không copy profile thật 1:1.
-
-Concept:
+lưu tại:
 
 ```text
-1 observed profile
-↓
-100–1000 synthetic viewers tương tự nhưng không giống hệt nhau
-↓
-Phase 7/8 offline testing
+data/collector_identity.json
 ```
 
-Robots không có cookie/account/browser credential và không có code hành động trên YouTube.
+File này git-ignored.
 
----
-
-# 6. Phase 6 slice 1 — IMPLEMENTED
-
-## 6.1 Viewer schema
+Sanitized community payload chỉ gửi:
 
 ```text
-schemas/viewer_robot.v1.schema.json
+participant_id
+device_id
+profile_id / derived profile_key
+analysis version
+certainty
+daily observation count
+interest weights + trends
+intent weights
+keyword trends
+tag trends
 ```
 
-Core object:
-
-```json
-{
-  "viewer_id": "viewer-...",
-  "seed_source": "pure_synthetic | observed_profile_prior",
-  "random_seed": 0,
-  "lineage": {},
-  "interest_model": {
-    "category_vector": {},
-    "primary_interests": [],
-    "secondary_interests": [],
-    "low_interests": [],
-    "exploration_interests": [],
-    "topic_vector": {}
-  },
-  "preference_model": {
-    "exploration_rate": 0.0,
-    "novelty_tolerance": 0.0,
-    "diversity_preference": 0.0,
-    "stability_preference": 0.0,
-    "intent_preferences": {}
-  },
-  "simulation_state": {
-    "step": 0,
-    "interaction_count": 0,
-    "last_video_id": null,
-    "state_version": 0
-  }
-}
-```
-
-`simulation_state` chỉ được khởi tạo ở Phase 6; chưa update cho tới Phase 8/9.
-
-## 6.2 Seed relationship graph
+Không gửi theo protocol v1:
 
 ```text
-taxonomy/interest_relations.v1.json
-```
-
-Seed relations gồm các hướng như:
-
-```text
-Technology ↔ Education
-Technology ↔ Business
-Gaming ↔ Entertainment
-Sports ↔ Health
-Food ↔ Travel
-Entertainment ↔ Music
-People/Lifestyle ↔ How-to
-Society ↔ News
-```
-
-Weights là research prior của project, không phải thống kê recommendation YouTube.
-
-## 6.3 Generator
-
-```text
-scripts/viewer/generate_viewers.py
-```
-
-Supports:
-
-```text
-pure_synthetic
-observed_profile_prior
-```
-
-Output:
-
-```text
-data/synthetic_viewers/<batch_id>/
-  manifest.json
-  viewers.jsonl
-```
-
-Generated viewer cohorts được `.gitignore` mặc định vì observed-prior cohorts có thể kế thừa personalized research priors.
-
-## 6.4 Reproducibility
-
-Viewer ID + viewer random seed + model fields được derive deterministic từ:
-
-```text
-master seed
-+
-seed mode
-+
-source profile token nếu có
-+
-viewer index
-```
-
-Same inputs/master seed → same model state.
-`created_at` có thể khác giữa các lần chạy.
-
-## 6.5 Cohort summary
-
-```text
-scripts/viewer/summarize_viewer_batch.py
-```
-
-Summary kiểm tra:
-
-```text
-viewer count
-seed source distribution
-mean category vector
-primary category counts
-exploration category counts
-mean exploration/novelty/diversity/stability
-co-interest pairs >= 5% weight
-```
-
-Mục tiêu là phát hiện generator quá đồng nhất hoặc sinh population vô lý trước Phase 7.
-
-## 6.6 Tests/docs
-
-```text
-tests/test_viewer_generator.py
-docs/VIEWER_ROBOT_MODEL.md
-.github/workflows/python-tests.yml
-```
-
-Tests cover:
-
-```text
-normalized category vector
-structured pure-synthetic generation
-same-seed reproducibility
-different viewer-index variability
-observed-profile-prior direction preservation
-batch uniqueness/count
+cookies
+password
+Google email/account identifier
+profile display label
+raw Home/Up Next video rows
+raw browsing/watch history
+subscribed-channel names/list
 ```
 
 ---
 
-# 7. Cách chạy Phase 6 hiện tại
+# 7. Automatic local → community sync
 
-## 7.1 Pure synthetic cohort
+Module:
+
+```text
+scripts/community/collector_agent.py
+```
+
+Nhiệm vụ:
+
+```text
+watch data/profile_library/profile_*.json
+↓
+phát hiện profile current thay đổi
+↓
+build sanitized submission
+↓
+POST community server
+```
+
+Có thể chạy:
 
 ```bat
-python scripts\viewer\generate_viewers.py --mode pure_synthetic --count 1000 --seed 42
+set "YT_LIBRARY_COMMUNITY_ENDPOINT=https://YOUR_SERVER"
+set "YT_LIBRARY_COMMUNITY_TOKEN=YOUR_PROJECT_TOKEN"
+python scripts\community\collector_agent.py
 ```
 
-Force một primary family nếu cần test cohort chuyên biệt:
+Hoặc để agent launch local bridge:
 
 ```bat
-python scripts\viewer\generate_viewers.py --mode pure_synthetic --count 500 --seed 42 --primary gaming
+python scripts\community\collector_agent.py --launch-bridge --endpoint https://YOUR_SERVER
 ```
 
-## 7.2 Seed từ observed longitudinal profile
-
-```bat
-python scripts\viewer\generate_viewers.py ^
-  --mode observed_profile_prior ^
-  --profile data\profile_library\profile_<id>.json ^
-  --count 500 ^
-  --seed 42
-```
-
-## 7.3 Inspect cohort
-
-```bat
-python scripts\viewer\summarize_viewer_batch.py data\synthetic_viewers\<batch_id>\viewers.jsonl
-```
-
-Output thêm:
-
-```text
-summary.json
-```
+Agent không browse YouTube; nó chỉ auto-sync kết quả local collector.
 
 ---
 
-# 8. Phase 6.2 — việc tiếp theo cần làm
+# 8. Central Community Server
 
-Sau slice 1, chưa sang Feed Simulation ngay cho tới khi kiểm tra cohort.
-
-## 8.1 Generator validation
-
-Chạy ít nhất:
+Module:
 
 ```text
-10,000 pure synthetic viewers
-500–1000 viewers quanh mỗi observed profile usable
+scripts/community/community_server.py
 ```
 
-Kiểm tra:
+Endpoint:
 
 ```text
-primary distribution có quá lệch không
-secondary có thực sự theo adjacency graph không
-exploration có quá nhiều/ít không
-observed cohort có giữ đúng content neighborhood không
-certainty thấp có tạo variance cao hơn certainty cao không
-same seed có reproducible không
+POST /v1/profile
+GET  /health
 ```
 
-## 8.2 Population composition
+Chạy local/test:
 
-Hiện một batch chỉ có một seed mode/source profile.
+```bat
+set "YT_LIBRARY_COMMUNITY_TOKEN=RANDOM_SECRET"
+python scripts\community\community_server.py --host 127.0.0.1 --port 8770
+```
 
-Phase 6.2 nên thêm population builder:
+Nếu deploy internet:
 
 ```text
-pure synthetic cohorts
-+
-multiple observed-profile seeded cohorts
-↓
-one simulation population manifest
+HTTPS reverse proxy
+firewall
+Bearer token
+server-side storage backup
+```
+
+Không expose server HTTP unauthenticated trực tiếp ra internet.
+
+Accepted profile submission sẽ replace current central snapshot của profile đó và rebuild creator report.
+
+Central data:
+
+```text
+data/community_profiles/
+data/community_reports/current.json
+data/community_reports/current.html
+```
+
+Deployment data được git-ignore.
+
+---
+
+# 9. Creator Community Aggregator
+
+Module:
+
+```text
+scripts/community/build_community_report.py
+```
+
+Đây là module tổng mà creator-facing architecture cần.
+
+Nó đọc tất cả current sanitized community profiles và aggregate theo participant-balanced weighting.
+
+Mỗi content lane trả:
+
+```text
+segment_key
+category
+matched_profile_count
+matched_participant_count
+profile_coverage_ratio
+participant_coverage_ratio
+participant_balanced_coverage
+participant_balanced_interest
+trend_momentum
+trend profile counts
+community opportunity score
+fit band
+core keywords
+core tags
+expansion keywords
+top intent
 ```
 
 Ví dụ:
 
 ```text
-10,000 viewers
-├── 4,000 broad pure synthetic
-├── 1,000 around observed Profile A
-├── 1,000 around observed Profile B
-├── 1,000 around observed Profile C
-└── 3,000 stratified primary-category cohorts
+Community key:
+science_technology::tutorial
+
+Participants matched: 8 / 12
+Profiles matched:     13 / 21
+
+Core keys:
+AI video
+creator workflow
+YouTube automation
+
+Core tags:
+ai video
+creator tools
+
+Expansion keys:
+agent workflow
+AI voice
+
+Fit band:
+strong
 ```
 
-Không coi tỷ lệ trên là population thật của YouTube; đây là simulation experiment composition.
+Ý nghĩa đúng:
 
-## 8.3 Profile uncertainty propagation
+> Hướng nội dung này có support rộng trong community panel đang quan sát.
 
-Observed profile certainty phải ảnh hưởng variance synthetic:
+Không được diễn giải:
 
-```text
-certainty cao
-→ robots gần prior hơn
-
-certainty thấp
-→ robots phân tán hơn / exploration cao hơn
-```
-
-Slice 1 đã có logic nền; cần validate bằng summary/stat tests.
-
-## 8.4 Topic-level detail
-
-Phase 6 MVP dùng Category mạnh nhất và optional `topic_vector` từ observed profile.
-
-Không chặn Phase 7 vì taxonomy sâu chưa hoàn chỉnh.
-
-Sau này khi Phase 2/3 sâu hơn, Viewer Robot có thể nâng:
-
-```text
-Category
-→ Niche
-→ Topic
-→ Subtopic
-```
-
-mà không đổi viewer_id contract lớn.
+> Có X% xác suất YouTube sẽ hiển thị/video sẽ có view.
 
 ---
 
-# 9. Definition of Done — Phase 6
+# 10. Creator UI contract
 
-Phase 6 hoàn thành khi:
+UI chính về sau là:
 
-- schema Viewer Robot ổn định cho Phase 7;
-- pure synthetic mode hoạt động;
-- observed-profile-prior mode hoạt động;
-- relationship-based secondary interests hoạt động;
-- same seed reproducible;
-- cohort summary/validation không cho thấy bias lỗi rõ ràng;
-- population builder có thể kết hợp nhiều cohort;
-- generated data chỉ offline/local;
-- tests pass;
-- không có code nào gửi Viewer Robot lên YouTube hoặc tạo real interaction.
+```text
+COMMUNITY OVERVIEW
+Participants                    N
+Profiles                        N
+Usable participants             N
+Usable profiles                 N
+
+TOP CONTENT OPPORTUNITIES
+#1 Lane A
+#2 Lane B
+#3 Lane C
+
+mỗi lane:
+participants matched
+profiles matched
+core keys
+core tags
+expansion keys
+trend breadth
+intent
+fit band
+```
+
+Sau đó mới drill-down:
+
+```text
+profile nào hỗ trợ lane
+Home/Up Next/Subscriptions evidence
+Today/7d/30d/Long
+keyword/tag provenance
+```
+
+Người sáng tạo không cần đọc raw profile JSON hoặc từng robot.
 
 ---
 
-# 10. Phase 7 — thiết kế ngay sau Phase 6
+# 11. Android collector direction
 
-Input:
-
-```text
-Viewer Robot
-+
-Video Content Vector
-+
-optional context/relationship features
-```
-
-Output:
+Android phải dùng cùng community submission protocol.
 
 ```text
-ranked synthetic feed
+Android collector
+↓
+local/sanitized profile state
+↓
+community_profile_submission.v1
+↓
+central server
 ```
 
-Initial transparent score dự kiến:
+Quan trọng:
+
+Public YouTube Data API **không expose personalized Home recommendation feed**.
+
+Vì vậy chưa được tuyên bố Android native app có thể lấy chính xác Home/Up Next như browser extension nếu chưa có legitimate read-only interface được validate.
+
+Android v1 nên bắt đầu từ những surface có thể thu hợp lệ/read-only, ví dụ:
 
 ```text
-viewer-content similarity
-+
-intent fit
-+
-transition/adjacency fit
-+
-novelty/exploration
-+
-freshness/demand proxy
+officially authorized subscription/account metadata nếu API cho phép
+participant-controlled web collector container nếu auth/platform policy phù hợp
 ```
 
-Mỗi component phải lưu riêng để giải thích được tại sao video được rank.
+Không mặc định dùng Android Accessibility để scrape YouTube app vì nó có thể thu cả dữ liệu UI nhạy cảm ngoài phạm vi.
 
-Phase 7 không truy cập YouTube và không tạo interaction thật.
+Chi tiết:
+
+```text
+docs/DISTRIBUTED_PROFILE_COLLECTION.md
+```
 
 ---
 
-# 11. Phase 8–9 preview
+# 12. Viewer Robot / Phase 6 — vai trò đã điều chỉnh
 
-## Phase 8 — Synthetic Interaction
-
-Robot có thể offline sinh event như:
+Code Phase 6 slice 1 vẫn tồn tại:
 
 ```text
-skip
-short_watch
-medium_watch
-long_watch
-completion
-rewatch
-synthetic_like_signal
-synthetic_interest_signal
-```
-
-Các event chỉ nằm trong local simulation logs, không map thành action thật trên YouTube.
-
-## Phase 9 — Interest Learning
-
-```text
-old interest vector
-+
-synthetic interaction evidence
-+
-time decay
-↓
-new synthetic viewer state
-```
-
-Khi đó mới bắt đầu hình thành behavioral history thật của Viewer Robot.
-
----
-
-# 12. Creator-facing direction vẫn giữ nguyên
-
-Người sáng tạo cuối cùng không cần xem từng robot.
-
-Robots là backend model để sau này tính:
-
-```text
-candidate video
-↓
-match synthetic population
-↓
-cohort coverage
-↓
-match observed project profiles
-↓
-creator opportunity summary
-```
-
-Creator Dashboard mặc định cần trả:
-
-```text
-tracked observed profiles
-usable profiles
-synthetic cohort size
-content lane coverage
-rising/stable opportunity breadth
-recommended anchor / bridge / expansion
-keyword/title/description/tag guidance
-creative blueprint
-certainty/limitations
-```
-
-Không gọi cohort coverage là probability of view/recommendation.
-
----
-
-# 13. Important current modules
-
-```text
-# observed profile side
-browser_extension/youtube_home_collector/
-scripts/homepage/home_bridge.py
-scripts/profile/build_consolidated_profile.py
-scripts/profile/build_temporal_profile.py
-
-# Phase 6 synthetic side
 schemas/viewer_robot.v1.schema.json
 taxonomy/interest_relations.v1.json
 scripts/viewer/generate_viewers.py
 scripts/viewer/summarize_viewer_batch.py
-docs/VIEWER_ROBOT_MODEL.md
 tests/test_viewer_generator.py
+```
+
+Nhưng synthetic viewers KHÔNG làm tăng số evidence thật.
+
+```text
+20 real community profiles
+→ 10,000 robots
+```
+
+vẫn chỉ có evidence thật từ 20 profiles/participants tương ứng.
+
+Viewer Robot chỉ là:
+
+```text
+scenario testing
+sensitivity testing
+future offline feed experiments
+```
+
+Nó không được rewrite canonical observed/community data và không phải nguồn chính để creator quyết định khi community evidence thực có sẵn.
+
+Trước mắt ưu tiên hoàn thiện distributed natural collection + community aggregator trước khi mở rộng Phase 7–9.
+
+---
+
+# 13. Current important modules
+
+```text
+# Browser collector
+browser_extension/youtube_home_collector/manifest.json        0.6.0
+browser_extension/youtube_home_collector/background.js
+browser_extension/youtube_home_collector/passive_collector.js
+browser_extension/youtube_home_collector/popup.html
+browser_extension/youtube_home_collector/popup_passive.js
+browser_extension/youtube_home_collector/popup.js
+browser_extension/youtube_home_collector/subscriptions.js
+
+# Local profile engine
+scripts/homepage/home_bridge.py
+scripts/profile/build_consolidated_profile.py
+scripts/profile/build_temporal_profile.py
+
+# Distributed community network
+schemas/community_profile_submission.v1.schema.json
+scripts/community/submit_profile.py
+scripts/community/collector_agent.py
+scripts/community/community_server.py
+scripts/community/build_community_report.py
+docs/DISTRIBUTED_PROFILE_COLLECTION.md
+tests/test_community_report.py
+
+# Synthetic sandbox
+scripts/viewer/generate_viewers.py
+scripts/viewer/summarize_viewer_batch.py
 ```
 
 ---
 
-# 14. Phase 5.5 validation continues in parallel
+# 14. Tests / CI
 
-Vẫn collect observed project profiles khoảng 1 lần/ngày khi thuận tiện.
+Workflow:
 
-Không cần dừng Phase 6 để chờ đủ 7 ngày.
+```text
+.github/workflows/python-tests.yml
+```
 
-Observed data tốt hơn theo thời gian sẽ tạo seed prior tốt hơn cho generator.
+Checks:
+
+```text
+Python compile
+community schema JSON
+viewer schema JSON
+extension manifest JSON
+extension JavaScript syntax
+unit tests
+```
+
+Community tests khóa:
+
+```text
+participant balancing
+participant vs profile counts
+community lane aggregation
+rising/emerging expansion keys
+```
 
 ---
 
-# 15. Next action for the next conversation
+# 15. Immediate next validation
 
-Tiếp tục Phase 6:
+Không cần quay lại thiết kế Viewer Robot ngay.
 
-> Đọc `PLAN.md`. Phase 6 Viewer Robot slice 1 đã implemented. Tiếp tục Phase 6.2: validate cohort generator, thêm multi-cohort population builder và chuẩn bị contract input/output cho Phase 7 Feed Simulation.
+## A. Browser passive collector
 
-Nếu Phase 6 validation đã ổn:
+Test ít nhất hai independent participants/devices nếu có thể.
 
-> Đọc `PLAN.md` và bắt đầu Phase 7 — Offline Feed Simulation. Feed score phải decomposable và chỉ chạy trên synthetic/local data.
+Mỗi participant:
+
+```text
+reload extension 0.6.0
+enable passive collector
+run local bridge
+use YouTube normally
+```
+
+Check:
+
+```text
+Home passive snapshots đúng video card
+Up Next chỉ đến từ watch pages participant tự mở
+Subscriptions snapshot hợp lý
+daily caps hoạt động
+không auto-navigation/player
+profile temporal update vẫn đúng
+```
+
+## B. Community pipeline
+
+Central machine:
+
+```bat
+set "YT_LIBRARY_COMMUNITY_TOKEN=..."
+python scripts\community\community_server.py --host 0.0.0.0 --port 8770
+```
+
+Participant machine:
+
+```bat
+set "YT_LIBRARY_COMMUNITY_ENDPOINT=https://..."
+set "YT_LIBRARY_COMMUNITY_TOKEN=..."
+python scripts\community\collector_agent.py
+```
+
+Check:
+
+```text
+Participant A 3 profiles
+Participant B 1 profile
+→ participant_count = 2
+→ profile_count = 4
+→ A total aggregate weight không > B chỉ vì có 3 profiles
+```
+
+## C. Creator report
+
+Check:
+
+```text
+core keys có đúng shared semantic không
+core tags có noisy/stale tags không
+expansion keys có thật sự rising/emerging không
+participant coverage có dễ hiểu không
+fit-band thresholds có cần tune không
+```
 
 ---
 
-# 16. Safety / scope bắt buộc
+# 16. Next engineering steps
 
-- Observed collector thật chỉ read-only.
-- Không tự click/play/like/comment/subscribe/unsubscribe trên YouTube thật.
-- Không fake traffic/view/engagement.
-- Không dùng observed project profiles làm nhóm tạo initial engagement.
-- Viewer Robot chỉ synthetic/offline.
-- Synthetic interaction chỉ ghi local simulation logs.
-- External real audience là population ngoài dự án.
-- Audience-fit/cohort coverage không phải xác suất view/recommendation.
-- Creator opportunity score là heuristic nghiên cứu.
-- Official YouTube metadata là evidence/reference, không phải semantic ground truth.
+Ưu tiên theo thứ tự:
+
+```text
+1. Validate passive browser collector 0.6.0
+2. Validate community server với >=2 independent participants
+3. Make community HTML the main Creator Dashboard
+4. Add profile drill-down/provenance links
+5. Build Android adapter against the same submission protocol
+6. Add channel affinity / freshness / language / duration dimensions
+7. Revisit Phase 6 synthetic robustness only as sandbox support
+```
+
+---
+
+# 17. Safety / data boundary
+
+- Participant phải opt-in collector.
+- Browser passive mode chỉ quan sát natural navigation; không tự tạo traffic.
+- Không tự click/play/like/comment/subscribe/unsubscribe.
+- Không dùng project profiles làm initial-engagement network.
+- Community server không cần cookies/password/Google account IDs.
+- Participant ID là random project ID, không phải email.
+- Một participant có nhiều profiles không được tính thành nhiều independent humans trong aggregate weighting.
+- Community fit/coverage không phải xác suất view/recommendation.
+- External real audience vẫn là population ngoài dự án.
+- Synthetic Viewer Robot chỉ là sandbox, không phải ground truth.
+
+---
+
+# 18. Câu mở đầu cho cuộc trò chuyện sau
+
+> Đọc `PLAN.md`. Kiến trúc hiện tại là distributed natural profile collection: extension 0.6.0 passive collector → local longitudinal profile → sanitized community sync → participant-balanced creator community report. Tiếp tục validate passive collector/community server và xây Creator Community Dashboard; Viewer Robot chỉ là synthetic sandbox phụ.
