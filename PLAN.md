@@ -47,7 +47,7 @@ CREATOR DASHBOARD
 browser_extension/youtube_home_collector/
 ```
 
-Current version: `0.6.2`.
+Current version: `0.6.3`.
 
 Passive collector auto-on khi participant truy cập YouTube và chỉ quan sát natural navigation:
 
@@ -215,7 +215,7 @@ data/community_reports/current.json
 # 8. Current status
 
 ```text
-Chrome passive collector                    IMPLEMENTED 0.6.2
+Chrome passive collector                    IMPLEMENTED 0.6.3
 Chrome single-central transport :8770       IMPLEMENTED
 Chrome in-process BrowserPipeline           IMPLEMENTED
 Legacy home_bridge.py                       REMOVED
@@ -224,8 +224,8 @@ Android Accessibility collector source      IMPLEMENTED 0.2.0
 Android auto sync                           IMPLEMENTED
 Android raw central ingest                  IMPLEMENTED
 Android APK build                           CURRENT ISSUE — FIX/VERIFY CI
-Android node → normalized video parser       PENDING REAL FIXTURES
-Android longitudinal profile                 PENDING PARSER
+Android node → normalized video parser      PENDING REAL FIXTURES
+Android longitudinal profile                PENDING PARSER
 
 Central server single process               IMPLEMENTED v2.0
 Participant-balanced aggregator             IMPLEMENTED
