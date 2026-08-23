@@ -1,7 +1,7 @@
 import importlib.util
-import json
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 
@@ -13,7 +13,8 @@ assert spec and spec.loader
 spec.loader.exec_module(interaction)
 
 
-def event(event_id, event_type, score, day="2026-08-24"):
+def event(event_id, event_type, score, day=None):
+    day = day or date.today().isoformat()
     return {
         "schema_version": "1.0.0",
         "event_id": event_id,
