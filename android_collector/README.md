@@ -1,6 +1,6 @@
 # Android YouTube Accessibility Collector
 
-Version: `0.1.0` (collector foundation)
+Version: `0.1.1` (collector foundation)
 
 ## Goal
 
@@ -232,14 +232,64 @@ If a participant switches between multiple YouTube accounts in the same Android 
 
 ## Build
 
-Open `android_collector/` in Android Studio, sync Gradle and install the `app` module on a test device.
+### GitHub Actions APK build
 
-The Gradle versions are repository pins for the prototype and may be updated when the project adopts a formal Android CI matrix. The current repository CI validates schemas/XML/guardrails/Python bridge syntax but does not yet perform a full Android SDK build.
+The repository now has a real Android SDK build workflow:
+
+```text
+.github/workflows/android-apk.yml
+```
+
+The workflow pins the build environment to:
+
+```text
+JDK 17
+Gradle 8.9
+Android SDK / compileSdk 35
+Android Gradle Plugin 8.7.3
+Kotlin 2.0.21
+```
+
+and executes:
+
+```text
+gradle -p android_collector --no-daemon --stacktrace :app:assembleDebug
+```
+
+A build is considered successful **only** when that workflow finishes green and verifies this file exists:
+
+```text
+android_collector/app/build/outputs/apk/debug/app-debug.apk
+```
+
+On success, GitHub Actions uploads an artifact named:
+
+```text
+youtube-library-collector-debug
+```
+
+containing:
+
+```text
+youtube-library-collector-debug.apk
+SHA256SUMS.txt
+```
+
+Do not treat XML/schema/guardrail CI as proof that an APK was built. Those checks are separate from the Android APK workflow.
+
+### Local build
+
+Open `android_collector/` in Android Studio with JDK 17 and Android SDK 35, or use a compatible Gradle 8.9 installation:
+
+```text
+gradle -p android_collector :app:assembleDebug
+```
 
 ## Next Android slice
 
 ```text
-ADB-collected real node-tree fixtures
+successful APK build
+→ ADB-collected real node-tree fixtures
 → node-to-video-card parser
 → Android daily surface profile
 → Android temporal profile
