@@ -8,10 +8,10 @@
 
 `youtube_library` là hệ thống nghiên cứu/offline gồm hai phía:
 
-1. **Viewer side** — quan sát recommendation exposure của browser profile thật theo chế độ read-only, sau đó mô phỏng viewer synthetic/offline.
-2. **Creator side** — dùng các profile/cluster để đề xuất chuỗi nội dung mới có semantic fit tốt với vùng recommendation đang quan sát.
+1. **Viewer side** — quan sát recommendation exposure của browser profile thật theo chế độ read-only, xây profile theo thời gian, sau đó mô phỏng viewer synthetic/offline.
+2. **Creator side** — dùng profile/cluster để đề xuất chuỗi nội dung mới có semantic fit tốt với vùng recommendation đang quan sát.
 
-Không cố sao chép chính xác taxonomy hay model nội bộ của YouTube. Taxonomy nội bộ được tối ưu cho:
+Taxonomy nội bộ không cần giống chính xác YouTube. Nó được tối ưu cho:
 
 ```text
 classification
@@ -22,29 +22,55 @@ classification
 → viewer simulation
 ```
 
-Không dùng robot để tạo traffic, view, click, like, comment hoặc tương tác giả trên YouTube thật.
+Không dùng robot để tạo traffic, view, click, like, comment, subscribe hoặc tương tác giả trên YouTube thật.
 
 ---
 
-## 2. Trạng thái hiện tại
+# 2. Trạng thái hiện tại
 
-### Milestone đã đạt
+## Milestone đã đạt
 
-**Recommendation Profile Intelligence MVP**
+```text
+Recommendation Profile Intelligence MVP
++
+Phase 5.5 Longitudinal Profile Evolution — CORE IMPLEMENTED
+```
 
-Đã có pipeline Home + Up Next + YouTube API enrichment + classifier + consolidated profile + creative brief.
+Pipeline hiện tại:
 
-Tuy nhiên vừa xác định còn thiếu một phần quan trọng trước Phase 6:
+```text
+Browser profile
+   ↓
+Home
+   +
+Subscriptions read-only
+   +
+random Home seeds → Up Next replay
+   ↓
+YouTube API enrichment
+   ↓
+classifier
+   ↓
+session profile
+   ↓
+DAILY OBSERVATION
+   ↓
+temporal decay / rolling windows
+   ↓
+LONGITUDINAL CURRENT PROFILE
+   ↓
+creator opportunity + creative blueprint
+```
 
-# Phase 5.5 — Longitudinal Profile Evolution — NEXT
+Phase 5.5 đã implement code. Việc còn lại của Phase 5.5 là **validation bằng dữ liệu thật trong ít nhất 3–7 ngày/profile**, không phải thêm kiến trúc lớn mới.
 
-Hiện profile mới chỉ phản ánh mạnh session vừa collect. Có history file nhưng chưa dùng history để cập nhật trọng số theo thời gian.
-
-Sau Phase 5.5 mới tiếp tục:
+Sau validation:
 
 # Phase 6 — Initial Viewer / Viewer Robot Generator
 
-### Tiến độ tương đối
+---
+
+## 3. Tiến độ roadmap
 
 | Phase | Nội dung | Trạng thái |
 |---|---|---|
@@ -54,8 +80,8 @@ Sau Phase 5.5 mới tiếp tục:
 | 3 | Keyword Index | ~70% |
 | 4 | Relationship Graph | ~30% |
 | 5 | Video Content Classification | ~90% / MVP usable |
-| 5.5 | Longitudinal Profile Evolution | 0% — **NEXT** |
-| 6 | Initial Viewer Generator | 0% |
+| **5.5** | **Longitudinal Profile Evolution** | **Core implemented — validation pending** |
+| 6 | Initial Viewer Generator | 0% — NEXT after validation |
 | 7 | Feed Simulation | 0% |
 | 8 | Interaction Simulation | 0% |
 | 9 | Interest Learning | ~20% concept/prior only |
@@ -71,173 +97,285 @@ Các tỷ lệ chỉ là checkpoint kiến trúc, không phải benchmark.
 
 ---
 
-## 3. Những gì đã làm được
+# 4. Các lớp evidence hiện tại
 
-### 3.1 Taxonomy + classifier
-
-Có 18 internal Level-1 categories và classifier multi-label.
-
-Đã tách rõ:
+Không trộn tất cả evidence thành một loại.
 
 ```text
-CONTENT       = video thực sự nói về gì
-INTENT        = video được trình bày theo kiểu gì
-TARGET        = creator metadata/định vị hướng tới nhóm nào
-POPULARITY    = demand/freshness proxy
-EXPOSURE      = profile đang được hiển thị video đó ở surface nào
+RECOMMENDATION EXPOSURE
+├── Home
+└── Up Next
+
+EXPLICIT AFFINITY
+└── Subscriptions
+
+HISTORICAL STATE
+└── Daily observations
+
+OBSERVED BEHAVIOR
+└── chưa dùng trong profile thật hiện tại
 ```
 
-Classifier hiện có entity/anchor/support evidence, confidence, intent, target và popularity profile.
+### Home
 
-Không gọi coverage/separability là accuracy khi chưa có ground-truth labels.
+Profile-level recommendation prior.
 
-### 3.2 YouTube Data API enrichment
+### Up Next
 
-Có thể enrich:
+Contextual recommendation neighborhood của seed video.
 
-- description
-- creator tags
-- categoryId
-- topicDetails
-- publishedAt
-- viewCount
-- likeCount
-- commentCount
+Replay dùng để đo stability/volatility và được normalize theo seed/replay để số request lớn không tự động áp đảo Home.
 
-API key chỉ đọc từ `YOUTUBE_API_KEY`.
+### Subscriptions
 
-### 3.3 Stable browser profile identity
-
-Extension lưu riêng cho từng Chrome/Edge profile:
+Extension 0.5.0 đọc read-only:
 
 ```text
-profile_id
-profile_label
-profile_short_id
+/feed/subscriptions
+/feed/channels
 ```
 
-Nhiều browser profile không bị trộn dữ liệu.
+Thu được:
 
-### 3.4 Home collector
+- video từ subscriptions feed để enrich/classify;
+- channel quan sát được từ subscribed-channel page.
 
-Read-only collector lấy:
+Subscriptions là explicit-affinity evidence, **không phải watch history**.
+
+Không suy luận unsubscribe chỉ vì channel biến mất khỏi một snapshot vì page payload có thể không đầy đủ/paginated.
+
+---
+
+# 5. Phase 5.5 — implementation hiện tại
+
+## 5.1 Daily observation
+
+Default research cadence:
 
 ```text
-video_id
-title
-channel
-position
+1 profile
+→ khoảng 1 collection / ngày
 ```
 
-Không click/play/like/comment/subscribe.
+Extension hiện vẫn được người dùng bấm collect; **chưa có unattended automatic scheduler**.
 
-### 3.5 Up Next collector + replay
-
-Flow:
+Nếu collect nhiều lần cùng calendar day:
 
 ```text
-Home
-  ↓
-random vài seed video
-  ↓
-fetch watch-page HTML cùng browser profile
-  ↓
-parse secondaryResults
-  ↓
-Up Next replay nhiều lần
+latest collection
+→ thay daily observation của ngày đó
 ```
 
-Replay dùng để đo stability, ví dụ:
+Raw session/surface evidence vẫn lưu để debug, nhưng longitudinal engine chỉ tính một daily observation cho ngày đó.
+
+Daily files:
 
 ```text
-3/3 → stable hơn
-1/3 → volatile / exploration hơn
+data/profile_library/daily/profile_<id>/YYYY-MM-DD.json
 ```
 
-### 3.6 Up Next video-only fix
+## 5.2 Surface priors
 
-Extension hiện là **0.4.1**.
+Khi đủ cả ba category distributions:
 
-Đã sửa lỗi 0.4.0 lấy nhầm Mix / playlist / “Danh sách kết hợp” từ `lockupViewModel/contentId`.
+```text
+Home           0.53
+Up Next        0.32
+Subscriptions  0.15
+```
 
-0.4.1:
+Nếu thiếu surface, các prior còn lại được renormalize.
 
-- chỉ nhận video ID YouTube hợp lệ 11 ký tự;
-- ưu tiên `watchEndpoint.videoId`;
-- `lockupViewModel` chỉ nhận khi là video;
-- playlist/radio/mix/collection bị loại;
-- có `extraction_diagnostics`.
+Đây là heuristic của dự án, không phải trọng số YouTube.
 
-Cần tiếp tục validate trên vài profile thật.
+## 5.3 Temporal windows
 
-### 3.7 Consolidated Profile Intelligence
+Profile hiện có:
 
-Mỗi profile chỉ có một report current:
+```text
+Today
+7d
+30d
+Long-term
+```
+
+Decay:
+
+```text
+weight(age) = 0.5 ** (age_days / half_life_days)
+```
+
+Initial parameters:
+
+```text
+7d         half-life 3.5 ngày
+30d        half-life 14 ngày
+long-term  half-life 60 ngày
+```
+
+Current profile mix:
+
+```text
+0.50 × Today
++ 0.30 × 7d
++ 0.15 × 30d
++ 0.05 × Long-term
+```
+
+Mục tiêu: một ngày bất thường không được thay hoàn toàn hồ sơ đã hình thành.
+
+## 5.4 Trend states
+
+Interest có thể mang:
+
+```text
+baseline
+emerging
+rising
+stable
+cooling
+dormant
+revived
+```
+
+Ngày đầu tiên dùng `baseline` vì chưa đủ history để giả định rising/cooling.
+
+Trend là nhãn của dự án từ daily observations, không phải nhãn của YouTube.
+
+## 5.5 Stable profile naming
+
+Profile name không đổi vì một snapshot.
+
+Có:
+
+```text
+stable_name
+candidate_name
+candidate_consecutive_days
+previous_names
+```
+
+Existing stable name chỉ được thay nếu candidate mới tồn tại đủ 3 daily observations liên tiếp.
+
+Tên profile vẫn là nhãn nghiên cứu, không phải YouTube internal label.
+
+## 5.6 Keyword / tag trends
+
+Keyword và tag có:
+
+```text
+Today
+7d
+30d
+Long-term
+trend_state
+```
+
+Subscriptions metadata được dùng như affinity/semantic evidence phụ, không biến tags thành recommendation-control mechanism.
+
+## 5.7 Observed subscribed-channel affinity
+
+Profile lưu:
+
+```text
+channel_id
+name
+observed_today
+observed_days
+first_seen
+last_seen
+```
+
+Absence không đồng nghĩa unsubscribe.
+
+---
+
+# 6. Output hiện tại
+
+Người dùng vẫn chỉ cần nhìn **một current report** cho mỗi browser profile:
 
 ```text
 data/profile_reports/profile_<id>__current.profile.json
 data/profile_reports/profile_<id>__current.profile.html
 ```
 
-Library:
+Persistent profile state:
 
 ```text
-data/profile_library/index.json
 data/profile_library/profile_<id>.json
 data/profile_library/profile_<id>.history.jsonl
+data/profile_library/daily/profile_<id>/YYYY-MM-DD.json
+data/profile_library/index.json
 ```
 
-Profile hiện có:
-
-- behavior profile name — nhãn nghiên cứu, không phải nhãn YouTube;
-- certainty / uncertainty;
-- interest weights;
-- Home weight;
-- Up Next weight;
-- cross-surface support;
-- core / adjacent / exploration;
-- topic map;
-- creative keywords;
-- creator tags;
-- stable Up Next;
-- demand signal;
-- opportunity score;
-- content series plan;
-- creative blueprints.
-
-### 3.8 Surface weighting hiện tại
-
-Trong **một collection session**, Home và Up Next không cộng 1:1:
+Raw evidence:
 
 ```text
-Home prior      ≈ 62%
-Up Next context ≈ 38%
+data/home_*/profile_<id>/
+data/up_next_*/profile_<id>/
+data/subscriptions_*/profile_<id>/
+data/collection_sessions/
 ```
 
-Up Next được normalize theo seed/replay để nhiều replay không áp đảo Home chỉ vì số observations lớn.
+Tất cả personalized data trên được `.gitignore` mặc định.
 
-Quan trọng: đây là **intra-session weighting**, chưa phải longitudinal/time weighting.
+---
 
-### 3.9 Creator strategy prototype
+# 7. Report hiện có
 
-Không đề xuất nhiều thể loại rời rạc.
+Longitudinal HTML hiện hiển thị:
 
 ```text
-ANCHOR LANE            60–70%
-BRIDGE LANE            20–30%
+profile stable name
+candidate name nếu đang chờ promote
+certainty
+daily history count
+Home item count
+Up Next replay count
+Subscriptions video/channel count
+
+interest weights
+- current
+- Today
+- 7d
+- 30d
+- Long-term
+- trend state
+- Home support
+- Up Next support
+- Subscription support
+
+content series plan
+creative blueprint
+keyword trends
+tag trends
+observed subscribed channels
+stable Up Next
+```
+
+Creator strategy tiếp tục dùng:
+
+```text
+ANCHOR                 60–70%
+BRIDGE                 20–30%
 CONTROLLED EXPANSION   <=10–15%
 ```
 
-Mở rộng phải giữ semantic continuity.
-
-### 3.10 Creative brief / video blueprint
-
-Consolidated profile hiện là `analysis_version 2.1.0` và có `creative_blueprints`.
-
-Mỗi blueprint hướng dẫn:
+Temporal state được dùng để tránh pivot theo một ngày đơn lẻ:
 
 ```text
-lane
+stable / rising → ưu tiên anchor/bridge
+emerging/revived → candidate expansion
+cooling/dormant → không nên pivot kênh chỉ vì historical weight
+```
+
+---
+
+# 8. Creative blueprint hiện tại
+
+Mỗi lane có creative brief:
+
+```text
 profile fit
 opportunity score
 
@@ -255,247 +393,204 @@ tag guidance
 - supporting semantic tags
 
 content blueprint
-- format
-- hook direction
+- recommended format
+- hook
 - opening
 - context/problem
 - main value
 - proof/example
-- recap
-- series bridge
+- recap / series bridge
 - thumbnail direction
 ```
 
-Creator tự quyết định nội dung thật, script, claim, ví dụ, footage, âm thanh, cách dựng và CTA.
+Creator vẫn tự quyết:
+
+- ý tưởng cụ thể;
+- luận điểm;
+- script/lời thoại;
+- ví dụ/bằng chứng;
+- footage/hình ảnh/âm thanh;
+- nhịp dựng;
+- storytelling;
+- claim;
+- CTA.
+
+Không viết hộ video hoàn chỉnh.
 
 ---
 
-## 4. Khoảng trống vừa xác định: profile chưa tiến hóa theo thời gian
+# 9. Version/module checkpoint
 
-Hiện `profile_<id>.history.jsonl` chỉ lưu snapshot lịch sử. `build_consolidated_profile.py` tính profile từ collection session hiện tại rồi overwrite current profile; chưa đọc history để tạo rolling/decayed state.
-
-Do đó chưa có đúng nghĩa:
+### Extension
 
 ```text
-Hôm qua profile thích gì
-        +
-Hôm nay đang được expose gì
-        ↓
-Hồ sơ mới sau khi cập nhật
+browser_extension/youtube_home_collector/
+  manifest.json       version 0.5.0
+  popup.html
+  popup.js
+  subscriptions.js
 ```
 
-Đây là mục tiêu của Phase 5.5.
+0.5.0 gồm:
 
----
+- Home;
+- video-only Up Next replay;
+- Subscriptions feed read-only;
+- subscribed channels read-only;
+- last daily collection timestamp trong local extension storage.
 
-# 5. Phase 5.5 — Longitudinal Profile Evolution
-
-## 5.1 Mục tiêu
-
-Mỗi browser profile trở thành một state sống, cập nhật định kỳ thay vì profile độc lập theo từng session.
-
-Default cadence ban đầu:
+### Bridge
 
 ```text
-1 collection / profile / ngày
+scripts/homepage/home_bridge.py
 ```
 
-Cadence phải configurable; không coi 1 lần/ngày là quy luật của YouTube.
-
-Một lần daily collection dự kiến đọc:
+Bridge version:
 
 ```text
-HOME
-+
-UP NEXT replay
-+
-SUBSCRIPTIONS / subscribed-channel evidence
+0.8
 ```
 
-Sau đó update profile library current state.
-
-## 5.2 Không trộn tất cả surface cùng một loại
-
-Các evidence layer nên tách:
+Pipeline finalize:
 
 ```text
-recommendation_exposure
-├── Home
-└── Up Next
-
-explicit_affinity
-└── Subscriptions / subscribed channels
-
-observed_behavior        # optional về sau
-├── voluntarily captured search
-├── watch history
-├── click/watch/completion
-└── other explicit behavior
+session profile
+→ temporal profile
+→ current JSON/HTML
+→ profile library
+→ daily history
 ```
 
-**Subscriptions không phải recommendation surface.** Nó là explicit/long-term affinity evidence và phải có trọng số/layer riêng.
-
-## 5.3 Profile temporal state đề xuất
-
-Mỗi profile nên có:
-
-```json
-{
-  "current": {},
-  "rolling_1d": {},
-  "rolling_7d": {},
-  "rolling_30d": {},
-  "long_term": {},
-  "interest_trends": {},
-  "profile_maturity": "new | forming | stable | drifting"
-}
-```
-
-Mỗi category/topic/keyword có thể có:
-
-```json
-{
-  "weight": 0.0,
-  "previous_weight": 0.0,
-  "delta_1d": 0.0,
-  "delta_7d": 0.0,
-  "trend": "emerging | rising | stable | cooling | dormant | revived",
-  "first_seen": "...",
-  "last_seen": "...",
-  "persistence_days": 0,
-  "surface_support": []
-}
-```
-
-## 5.4 Time weighting
-
-Không thay profile cũ hoàn toàn bằng snapshot mới.
-
-Dùng decay/EMA configurable, ví dụ khái niệm:
+### Temporal engine
 
 ```text
-old_state × time_decay
-+
-new_daily_evidence × update_strength
-↓
-new_state
+scripts/profile/build_temporal_profile.py
 ```
 
-Có thể biểu diễn decay theo half-life:
+Current longitudinal analysis version:
 
 ```text
-decay = exp(-ln(2) × age_days / half_life_days)
+2.5.0
 ```
 
-Half-life phải tune theo loại signal, không hard-code như “sự thật YouTube”.
-
-Ví dụ logic ban đầu có thể phân biệt:
+### Session profile / creator brief
 
 ```text
-Home exposure        → decay nhanh hơn
-Up Next context      → decay nhanh hơn
-Subscriptions        → decay chậm hơn
-Repeated persistence → tăng confidence
+scripts/profile/build_consolidated_profile.py
 ```
 
-## 5.5 Trọng số profile nên gồm nhiều tầng
-
-Mỗi interest cuối không chỉ là category share.
-
-Nên có:
+Current session analysis version:
 
 ```text
-surface evidence
-× position/confidence
-× replay stability
-× cross-surface support
-× temporal decay
-× multi-day persistence
-× evidence quality
+2.1.0
 ```
 
-Không để một ngày bất thường làm profile pivot mạnh ngay lập tức.
-
-## 5.6 Daily update output
-
-Sau mỗi lần collect:
+### Docs/tests
 
 ```text
-1. lưu raw evidence
-2. classify/enrich
-3. build daily snapshot profile
-4. đọc historical state
-5. temporal update
-6. ghi current profile
-7. append history
-8. render current HTML
-```
-
-HTML nên thêm:
-
-```text
-TODAY
-7-DAY TREND
-30-DAY CORE
-RISING INTERESTS
-COOLING INTERESTS
-NEWLY EMERGING TOPICS
-PERSISTENT KEYWORDS/TAGS
-SUBSCRIBED CHANNEL AFFINITY
-PROFILE MATURITY
-```
-
-## 5.7 Subscriptions surface
-
-Cần thêm collector read-only cho ít nhất:
-
-```text
-subscribed channel list
-subscription feed / latest subscribed videos
-```
-
-Nên aggregate:
-
-```text
-channel affinity
-channel topic vector
-category/topic distribution
-recency of subscribed uploads
-```
-
-Không tự subscribe/unsubscribe.
-
-## 5.8 Profile naming theo thời gian
-
-Tên hồ sơ hiện tại không nên đổi chỉ vì một snapshot.
-
-Đề xuất:
-
-```text
-candidate_name
-→ phải persist N ngày / đủ confidence
-→ mới promote thành behavior_profile_name
-```
-
-Có thể lưu:
-
-```text
-current_name
-candidate_name
-candidate_confidence
-name_stability_days
-previous_names
+docs/PROFILE_INTELLIGENCE_MODEL.md
+docs/LONGITUDINAL_PROFILE_MODEL.md
+tests/test_temporal_profile.py
+.github/workflows/python-tests.yml
 ```
 
 ---
 
-## 6. Những signal nên bổ sung sau Home + Up Next + Subscriptions
+# 10. Recent implementation commits
 
-Không nhất thiết làm tất cả ngay. Thứ tự ưu tiên:
+```text
+7df991b  extension 0.4.1 — Up Next video-only fix
+93f3ba8  consolidated profile 2.1 creative blueprint
+2dd7bc4  Phase 5.5 temporal engine
+fd0d2ee  bridge 0.8 Home + Up Next + Subscriptions + temporal finalize
+4ebc8b2  read-only Subscriptions parser
+cdc723c  Subscriptions popup controls
+0a87aad  daily Subscriptions flow in popup
+674ff0c  extension 0.5.0
+6e364ed  ignore Subscriptions/temporal personalized data
+23b2a3c  longitudinal model documentation
+7b9c939  temporal unit tests
+69103c4  Python compile/unit-test CI workflow
+```
 
-### A. Channel affinity — ưu tiên cao
+Luôn fetch file hiện tại trước khi sửa; không overwrite bằng SHA cũ từ hội thoại.
 
-Không chỉ category/topic, cần biết profile thường được expose những channel nào.
+---
+
+# 11. Validation cần làm trước Phase 6
+
+Không thêm feature lớn vào Phase 5.5 ngay. Chạy dữ liệu thật trước.
+
+## Minimum validation
+
+Với ít nhất 2–3 browser profiles:
+
+```text
+Day 1
+Day 2
+Day 3
+...
+Day 7
+```
+
+Mỗi ngày collect một lần nếu thuận tiện.
+
+Kiểm tra:
+
+1. extension 0.5.0 vẫn lấy Home đúng;
+2. Up Next chỉ còn video đơn, không Mix/playlist;
+3. Subscriptions feed trả video đúng;
+4. observed subscribed channels hợp lý;
+5. cùng ngày collect lại không tăng `daily_observation_count`;
+6. sang ngày mới count tăng 1;
+7. ngày đầu trend = baseline;
+8. sau vài ngày có rising/stable/cooling hợp lý;
+9. current weight không nhảy hoàn toàn theo một snapshot;
+10. stable profile name không đổi ngay từ một ngày lệch;
+11. keyword/tag trends không bị stale/noisy tags áp đảo;
+12. HTML current vẫn là một report dễ đọc.
+
+Nếu trend quá nhạy/chậm, tune:
+
+```text
+surface priors
+half-life
+current-window weights
+trend thresholds
+```
+
+Không gọi tuning này là “tìm đúng thuật toán YouTube”.
+
+---
+
+# 12. Những phần vẫn chưa làm
+
+### Automatic daily scheduler
+
+Chưa làm unattended scheduler.
+
+Hiện daily semantics hoạt động khi người dùng chạy collection. Có thể thêm Chrome alarms/local scheduler về sau nếu thực sự cần, nhưng không nên làm trước khi validation collector ổn.
+
+### Profile maturity
+
+Chưa có nhãn riêng đầy đủ:
+
+```text
+new
+forming
+stable
+drifting
+```
+
+Có thể suy từ số daily observations + trend volatility sau khi đã có vài ngày dữ liệu.
+
+### Full evidence provenance UI
+
+Raw evidence và session paths đã được lưu, nhưng HTML chưa có click-through provenance chi tiết cho từng weight/keyword.
+
+### Channel affinity ngoài Subscriptions
+
+Chưa aggregate đầy đủ:
 
 ```text
 channel repeated on Home
@@ -503,207 +598,61 @@ channel repeated on Home
 channel repeated in Up Next
 +
 subscribed channel
-↓
-channel affinity
 ```
 
-Creator strategy có thể dùng channel-neighborhood như evidence phụ.
+### Freshness / duration / language preference
 
-### B. Freshness preference — ưu tiên cao
+Đã có một phần metadata foundation nhưng chưa thành longitudinal profile dimensions riêng.
 
-Profile có thiên về:
+### Baseline/control profile
 
-```text
-breaking / same-day
-recent <7d
-evergreen
-old catalog
-```
-
-Điều này ảnh hưởng loại video creator nên làm.
-
-### C. Format preference — ưu tiên cao
-
-Tách preference:
-
-```text
-long-form
-short-form
-livestream
-playlist/compilation
-tutorial
-analysis/review
-news
-```
-
-Duration hiện cần extractor tốt hơn để dùng đáng tin cậy.
-
-### D. Language / locale profile
-
-Theo dõi ngôn ngữ nội dung đang được expose:
-
-```text
-Vietnamese
-English
-Korean
-Turkish
-...
-```
-
-Không suy ra dân tộc/quốc tịch; chỉ mô tả language exposure.
-
-### E. Time-of-day / day-of-week segments
-
-Nếu sau này collect nhiều lần/ngày:
-
-```text
-morning profile
-night profile
-weekday
-weekend
-```
-
-Một profile có thể có interest context khác nhau theo thời điểm.
-
-### F. Baseline / control exposure — rất đáng làm
-
-Có một profile mới hoặc neutral/control snapshot để ước lượng:
+Chưa làm:
 
 ```text
 profile exposure
 -
-global/common exposure baseline
-=
-profile-specific signal proxy
+common/control exposure
+→ profile-specific signal proxy
 ```
 
-Giúp tránh hiểu nhầm một trend toàn YouTube là sở thích riêng của profile.
+Đây là ưu tiên cao sau khi daily data ổn.
 
-### G. Optional observed behavior evidence
+### Transition persistence
 
-Chỉ nếu người dùng chủ động muốn dùng dữ liệu read-only:
-
-```text
-watch history
-search queries/results đã tự thực hiện
-liked/watch-later playlists
-```
-
-Các signal này phải lưu riêng khỏi recommendation exposure và mạnh hơn prior khi update posterior.
-
-Không tự tạo hành vi thật.
-
-### H. Transition persistence
-
-Up Next không chỉ đo video ổn định mà còn đo:
+Chưa có learned multi-day graph:
 
 ```text
 Topic A → Topic B
-Topic B → Topic C
 ```
 
-Nếu transition tồn tại nhiều ngày, nó là bridge lane tốt hơn một transition chỉ xuất hiện một session.
-
-### I. Exposure saturation / novelty
-
-Creator strategy nên biết một vùng nội dung:
-
-```text
-đang tăng
-đang ổn định
-đã bão hòa trong profile observations
-```
-
-Không chỉ chọn topic có trọng số cao nhất.
-
-### J. Evidence provenance
-
-Mỗi trọng số nên truy được:
-
-```text
-vì Home ngày nào
-vì Up Next seed nào
-vì subscription/channel nào
-vì keyword/topic nào
-```
-
-Để debug và giải thích được profile.
-
----
-
-## 7. Các module quan trọng hiện tại
-
-```text
-browser_extension/youtube_home_collector/
-  manifest.json
-  popup.html
-  popup.js
-
-scripts/homepage/home_bridge.py
-scripts/enrichment/youtube_enrich.py
-scripts/classification/classify_homepage_v2.py
-scripts/profile/build_profile_report.py
-scripts/profile/build_consolidated_profile.py
-
-taxonomy/content_rules.v2.json
-taxonomy/homepage_categories.v1.json
-
-docs/PROFILE_INTELLIGENCE_MODEL.md
-PROJECT_PLAN.md
-PLAN.md
-```
-
-Checkpoint đáng nhớ:
-
-```text
-7df991b  extension 0.4.1 — Up Next video-only fix
-93f3ba8  consolidated profile 2.1 — creative title/description/tag blueprint
-```
-
-Luôn fetch file hiện tại từ GitHub trước khi sửa.
-
----
-
-## 8. Những phần vẫn còn chưa làm
-
-### Taxonomy sâu
-
-Chưa hoàn thiện toàn bộ:
-
-```text
-Category → Niche → Sub-niche → Topic → Subtopic
-```
+qua nhiều ngày/seed.
 
 ### Classifier v3
 
-Sau khi có đủ validation data:
+Còn các việc:
 
-- direct topicDetails → internal taxonomy mapping;
-- giảm weight broad official category IDs;
-- tag-content consistency mạnh hơn;
+- topicDetails → internal taxonomy normalization;
+- broad official category reliability;
 - contextual AI;
 - intent fixes;
-- entities/anchors;
-- unit tests.
+- stale tag handling mạnh hơn;
+- entity expansion;
+- labeled evaluation set.
 
-### Transition Graph chính thức
+### API metadata cache
 
-Up Next mới là foundation, chưa có graph learned/persistent đầy đủ.
+Chưa cache theo `video_id`; cần làm để giảm quota khi replay/session lặp video.
 
-### Cross-profile overlap / clustering
+### Channel DNA / candidate scoring module
 
-Chưa làm.
-
-### Channel DNA / Candidate Scoring
-
-Chưa có module nhập idea mới và chấm đầy đủ:
+Chưa có module riêng để nhập idea creator và chấm:
 
 ```text
 Profile fit
 Channel DNA fit
 Home overlap
 Up Next overlap
-Subscription/channel affinity
+Subscription affinity
 Keyword overlap
 Demand
 Freshness
@@ -711,54 +660,34 @@ Series continuity
 Temporal trend
 ```
 
-### API metadata cache
-
-Chưa có cache theo `video_id` để tránh enrich lặp.
-
-### Automatic daily scheduler
-
-Chưa có scheduler chính thức.
-
-Mục tiêu sau khi Phase 5.5 engine ổn:
-
-```text
-1 profile → mặc định 1 daily collection
-```
-
-Có thể dùng local scheduler/browser extension timer về sau, nhưng collector vẫn phải read-only và giữ browser profile identity.
-
 ---
 
-## 9. Definition of Done — Phase 5.5
+# 13. Next step chính thức
 
-Phase 5.5 hoàn thành khi:
+## Trước tiên
 
-- current profile không bị thay hoàn toàn bởi một snapshot mới;
-- có daily/rolling/long-term weights;
-- có configurable time decay;
-- có emerging/rising/stable/cooling state;
-- có profile maturity;
-- Home và Up Next vẫn giữ vai trò khác nhau;
-- Subscriptions được thu read-only và giữ thành explicit affinity layer;
-- current report cho thấy hôm nay thay đổi gì so với 7/30 ngày;
-- profile naming có stability/hysteresis;
-- evidence provenance truy được;
-- historical state có thể dùng làm `observed_profile_prior` cho Phase 6.
+**Validate Phase 5.5 trong 3–7 ngày.**
 
----
+Không cần chờ đủ 7 ngày để sửa bug collector nếu phát hiện lỗi rõ ràng.
 
-# 10. Sau Phase 5.5 — Phase 6 Viewer Robot
+## Sau khi temporal state ổn
 
-Viewer synthetic/offline nên hỗ trợ hai seed mode:
+# Phase 6 — Initial Viewer / Viewer Robot Generator
+
+Hai seed mode:
 
 ```text
 pure synthetic
 observed-profile-prior seeded
 ```
 
-Observed profile prior lúc này sẽ tốt hơn vì đã được tích lũy nhiều ngày thay vì chỉ dựa vào một session.
+Observed-profile-prior lúc này dùng longitudinal `profile_library/profile_<id>.json`, không dùng một Home snapshot đơn lẻ.
 
-Sau Phase 6:
+Viewer Robot từ Phase 6 trở đi vẫn chạy synthetic/offline.
+
+---
+
+# 14. Sau Phase 6
 
 ```text
 Phase 7  Feed Simulation
@@ -775,19 +704,26 @@ Phase 16 Evaluation
 
 ---
 
-## 11. Gợi ý mở cuộc trò chuyện tiếp theo
+# 15. Câu mở đầu cho cuộc trò chuyện sau
 
-> Đọc `PLAN.md` và tiếp tục Phase 5.5 — Longitudinal Profile Evolution. Trước tiên thiết kế temporal profile schema, daily update/decay engine và Subscriptions read-only surface; chưa sang Viewer Robot cho tới khi historical profile state hoạt động.
+Để validate Phase 5.5:
+
+> Đọc `PLAN.md`. Tôi đã collect dữ liệu mới bằng extension 0.5.0. Kiểm tra longitudinal profile, Subscriptions và trend states trước khi sang Phase 6.
+
+Khi đã validation ổn:
+
+> Đọc `PLAN.md` và bắt đầu Phase 6 — Initial Viewer / Viewer Robot Generator, dùng longitudinal profile hiện tại làm một optional observed-profile prior.
 
 ---
 
-## 12. Nguyên tắc an toàn / phạm vi
+# 16. Safety / scope bắt buộc
 
 - Collector thật chỉ read-only.
-- Không click/play/like/comment/subscribe tự động.
-- Không tạo fake traffic/view/engagement.
-- Recommendation exposure không được gọi là watch behavior thật.
-- Subscriptions là explicit affinity, không được trộn như Home recommendation.
-- Optional watch/search/history evidence phải tách riêng khỏi exposure.
+- Không tự click/play/like/comment/subscribe/unsubscribe.
+- Không fake traffic/view/engagement.
+- Recommendation exposure không phải watch behavior thật.
+- Subscriptions là explicit affinity, không phải recommendation surface hay watch history.
+- Viewer Robot từ Phase 6 phải synthetic/offline.
 - Creator opportunity score là heuristic nghiên cứu, không đảm bảo impressions/views.
-- Official YouTube metadata chỉ là evidence/reference, không phải semantic ground truth.
+- Official YouTube metadata là evidence/reference, không phải semantic ground truth.
+- Không gọi coverage/separability là accuracy nếu chưa có labeled ground truth.
