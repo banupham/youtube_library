@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YouTube Library Recommendation Collector",
-  "version": "0.6.3",
-  "description": "Read-only collector that auto-starts passive natural-use Home, Up Next and Subscriptions capture when a participant visits YouTube. It never clicks, plays, or changes subscriptions.",
+  "version": "0.7.0",
+  "description": "Read-only natural-use collector for Home, Up Next, Subscriptions and interaction events. It never clicks, plays, comments, likes or subscribes on behalf of the participant.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -10,7 +10,12 @@
   ],
   "host_permissions": [
     "https://www.youtube.com/*",
-    "http://127.0.0.1:8770/*"
+    "http://127.0.0.1:8770/*",
+    "http://localhost:8770/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -23,7 +28,7 @@
     }
   ],
   "action": {
-    "default_title": "YouTube Library passive collector / manual fallback",
+    "default_title": "YouTube Library collector",
     "default_popup": "popup.html"
   }
 }
