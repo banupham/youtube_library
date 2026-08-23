@@ -18,6 +18,11 @@ data/profile_library/**/*.jsonl
 data/collection_sessions/**/*.json
 data/collection_sessions/**/*.html
 
+# Phase 6 Viewer Robot cohorts are generated local artifacts. Observed-profile
+# seeded cohorts may inherit personalized priors, so keep all generated batches local.
+data/synthetic_viewers/**/*.json
+data/synthetic_viewers/**/*.jsonl
+
 # Backward compatibility for flat files created by older versions.
 data/home_snapshots/*.json
 data/home_enriched/*.json
@@ -34,10 +39,13 @@ data/profile_library/*.json
 data/profile_library/*.jsonl
 data/collection_sessions/*.json
 data/collection_sessions/*.html
+data/synthetic_viewers/*.json
+data/synthetic_viewers/*.jsonl
 
 # Keep directory placeholders tracked.
 !data/home_snapshots/.gitkeep
 !data/home_classified/.gitkeep
+!data/synthetic_viewers/.gitkeep
 
 # Python cache
 __pycache__/
