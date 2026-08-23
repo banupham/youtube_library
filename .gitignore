@@ -1,77 +1,8 @@
-# Local browser profile contains cookies/session data. Never commit it.
-data/browser_profile/
+# Runtime data is generated/consumed by code and is never source-controlled.
+data/*
+!data/README.md
 
-# Local collector identity/sync state are installation-specific.
-data/collector_identity.json
-data/community_sync_state.json
-
-# Personalized YouTube recommendation snapshots/results are local by default.
-data/home_snapshots/**/*.json
-data/home_enriched/**/*.json
-data/home_classified/**/*.json
-data/up_next_snapshots/**/*.json
-data/up_next_enriched/**/*.json
-data/up_next_classified/**/*.json
-data/subscriptions_snapshots/**/*.json
-data/subscriptions_enriched/**/*.json
-data/subscriptions_classified/**/*.json
-data/profile_reports/**/*.json
-data/profile_reports/**/*.html
-data/profile_library/**/*.json
-data/profile_library/**/*.jsonl
-data/collection_sessions/**/*.json
-data/collection_sessions/**/*.html
-
-# Android Accessibility snapshots pulled over ADB are raw participant evidence.
-data/android_snapshots/**/*.json
-data/android_snapshots/**/*.jsonl
-data/android_snapshots/*.json
-data/android_snapshots/*.jsonl
-
-# Raw Android snapshots automatically received by the central ingest server.
-data/android_ingest/**/*.json
-data/android_ingest/**/*.jsonl
-data/android_ingest/*.json
-data/android_ingest/*.jsonl
-
-# Sanitized community submissions/reports remain deployment data, not source code.
-data/community_profiles/**/*.json
-data/community_reports/**/*.json
-data/community_reports/**/*.html
-
-# Phase 6 Viewer Robot cohorts are generated local artifacts. Observed-profile
-# seeded cohorts may inherit personalized priors, so keep all generated batches local.
-data/synthetic_viewers/**/*.json
-data/synthetic_viewers/**/*.jsonl
-
-# Backward compatibility for flat files created by older versions.
-data/home_snapshots/*.json
-data/home_enriched/*.json
-data/home_classified/*.json
-data/up_next_snapshots/*.json
-data/up_next_enriched/*.json
-data/up_next_classified/*.json
-data/subscriptions_snapshots/*.json
-data/subscriptions_enriched/*.json
-data/subscriptions_classified/*.json
-data/profile_reports/*.json
-data/profile_reports/*.html
-data/profile_library/*.json
-data/profile_library/*.jsonl
-data/collection_sessions/*.json
-data/collection_sessions/*.html
-data/community_profiles/*.json
-data/community_reports/*.json
-data/community_reports/*.html
-data/synthetic_viewers/*.json
-data/synthetic_viewers/*.jsonl
-
-# Keep directory placeholders tracked.
-!data/home_snapshots/.gitkeep
-!data/home_classified/.gitkeep
-!data/synthetic_viewers/.gitkeep
-
-# Android/Gradle local build artifacts.
+# Android / Gradle local build artifacts.
 android_collector/.gradle/
 android_collector/.idea/
 android_collector/local.properties
@@ -79,6 +10,6 @@ android_collector/**/build/
 *.apk
 *.aab
 
-# Python cache
+# Python cache.
 __pycache__/
 *.pyc
