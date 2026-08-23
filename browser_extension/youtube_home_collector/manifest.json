@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Library Home Collector",
+  "version": "0.1.0",
+  "description": "Read-only collector for rendered YouTube Home video cards. Sends snapshots to the local youtube_library bridge.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "http://127.0.0.1:8765/*"
+  ],
+  "action": {
+    "default_title": "Collect YouTube Home",
+    "default_popup": "popup.html"
+  }
+}
