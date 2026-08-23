@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>YouTube Recommendation Collector</title>
   <style>
-    body { font-family: Arial, sans-serif; width: 340px; margin: 14px; }
+    body { font-family: Arial, sans-serif; width: 350px; margin: 14px; }
     label { display: block; margin-top: 10px; font-size: 13px; }
     input { width: 100%; box-sizing: border-box; padding: 7px; margin-top: 4px; }
     button { width: 100%; margin-top: 14px; padding: 10px; cursor: pointer; }
@@ -26,7 +26,7 @@
       <input id="profileLabel" type="text" maxlength="60" placeholder="Ví dụ: Profile A, Music test, New profile">
     </label>
     <div class="profile-id">ID: <span id="profileId">đang tạo...</span></div>
-    <div class="hint">ID được lưu riêng trong browser profile hiện tại. Hai Chrome profile sẽ có hai ID khác nhau.</div>
+    <div class="hint">ID được lưu riêng trong browser profile hiện tại. Mỗi profile chỉ có một hồ sơ tổng hợp hiện tại trong Profile Library.</div>
   </div>
 
   <label>
@@ -40,8 +40,8 @@
   </label>
 
   <div class="section">
-    <strong>Up Next sampling</strong>
-    <div class="hint">Sau khi đọc Home, extension chọn ngẫu nhiên vài video và tải HTML watch page cùng cookie profile để đọc secondaryResults. Mỗi seed có thể replay nhiều lần để đo độ ổn định của Up Next. Không điều hướng tới video và không khởi tạo player.</div>
+    <strong>Up Next evidence</strong>
+    <div class="hint">Sau Home, extension chọn ngẫu nhiên vài seed và request watch-page HTML nhiều lần để đo Up Next ổn định/biến động. Các replay chỉ là evidence nội bộ; cuối phiên chỉ tạo một báo cáo tổng hợp.</div>
 
     <label>
       Số video Home random để đọc Up Next
@@ -59,7 +59,7 @@
     </label>
   </div>
 
-  <button id="collect">Collect Home + replay Up Next</button>
+  <button id="collect">Collect + update Profile Library</button>
   <div id="status">Bridge cần chạy tại 127.0.0.1:8765.</div>
 
   <script src="popup.js"></script>
