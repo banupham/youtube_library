@@ -45,7 +45,7 @@
 
   <div class="section">
     <strong>Manual fallback / test</strong>
-    <p class="hint">Chế độ này giữ pipeline cũ để debug/test hoặc bổ sung snapshot khi cần. Không phải luồng thu thập tự nhiên mặc định.</p>
+    <p class="hint">Chế độ này giữ pipeline cũ để debug/test hoặc bổ sung snapshot khi cần. Từ bản 0.6.2, cả passive và manual đều đi qua Central Server 127.0.0.1:8770.</p>
   </div>
 
   <label>
@@ -92,10 +92,11 @@
   </div>
 
   <button id="collect">Manual collect + update Profile Library</button>
-  <div id="status">Bridge cần chạy tại 127.0.0.1:8765.</div>
+  <div id="status">Central server cần chạy tại 127.0.0.1:8770.</div>
 
   <script src="subscriptions.js"></script>
   <script src="popup.js"></script>
+  <script src="central_compat.js"></script>
   <script src="popup_passive.js"></script>
 </body>
 </html>
