@@ -55,19 +55,30 @@ jobs:
       - name: Build debug APK
         shell: bash
         run: |
-          gradle -p android_collector --no-daemon --stacktrace --warning-mode all clean :app:assembleDebug
+          set -o pipefail
+          mkdir -p artifacts
+          gradle -p android_collector --no-daemon --stacktrace --warning-mode all clean :app:assembleDebug 2>&1 | tee artifacts/android-build.log
 
       - name: Verify and stage APK
         shell: bash
         run: |
           APK="android_collector/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          mkdir -p artifacts
           cp "$APK" artifacts/youtube-library-collector-debug.apk
           sha256sum artifacts/youtube-library-collector-debug.apk | tee artifacts/SHA256SUMS.txt
           ls -lh artifacts/youtube-library-collector-debug.apk
 
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-log
+          path: artifacts/android-build.log
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: youtube-library-collector-debug
