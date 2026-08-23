@@ -111,7 +111,7 @@ Human-facing output ưu tiên dashboard HTML. JSON dùng cho code/API/debug.
 ## Trạng thái hiện tại
 
 ```text
-Chrome passive collector              implemented 0.6.2
+Chrome passive collector              implemented 0.6.3
 Chrome → single central :8770         implemented
 Chrome in-process profile pipeline    implemented
 Android Accessibility collector       source 0.2.0 implemented
