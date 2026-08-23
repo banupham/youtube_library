@@ -1,4 +1,5 @@
 const BRIDGE_BASE = 'http://127.0.0.1:8765';
+const COLLECTOR_VERSION = '0.6.1';
 
 function createProfileId() {
   if (globalThis.crypto?.randomUUID) return `browser-${crypto.randomUUID()}`;
@@ -14,6 +15,20 @@ function localDayKey(date = new Date()) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+async function ensureParticipationDefault() {
+  const stored = await chrome.storage.local.get(['passiveAutoEnabled', 'participationInitializedAt']);
+  const updates = {};
+  if (typeof stored.passiveAutoEnabled === 'undefined') updates.passiveAutoEnabled = true;
+  if (!stored.participationInitializedAt) updates.participationInitializedAt = new Date().toISOString();
+  if (Object.keys(updates).length) await chrome.storage.local.set(updates);
+  return typeof stored.passiveAutoEnabled === 'undefined' ? true : stored.passiveAutoEnabled !== false;
+}
+
+async function passiveEnabled() {
+  const stored = await chrome.storage.local.get(['passiveAutoEnabled']);
+  return stored.passiveAutoEnabled !== false;
 }
 
 async function ensureCollectorProfile() {
@@ -45,13 +60,22 @@ async function postBridge(endpoint, payload) {
   return response.json();
 }
 
+chrome.runtime.onInstalled.addListener(() => {
+  ensureParticipationDefault().catch((error) => console.warn('Cannot initialize passive participation', error));
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  ensureParticipationDefault().catch((error) => console.warn('Cannot restore passive participation default', error));
+});
+
+ensureParticipationDefault().catch((error) => console.warn('Cannot initialize passive participation', error));
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type !== 'youtube_library_passive_snapshot') return false;
 
   (async () => {
-    const stored = await chrome.storage.local.get(['passiveAutoEnabled']);
-    if (!stored.passiveAutoEnabled) {
-      sendResponse({ ok: false, skipped: 'passive_auto_disabled' });
+    if (!(await passiveEnabled())) {
+      sendResponse({ ok: false, skipped: 'passive_collection_paused' });
       return;
     }
 
@@ -68,7 +92,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     payload.collection_session_id = sessionId;
     payload.capture_context = {
       mode: 'passive_natural_navigation',
-      collector_version: '0.6.0',
+      collector_version: COLLECTOR_VERSION,
+      auto_start_policy: 'enabled_by_default_on_extension_install',
       tab_url: sender?.tab?.url || payload.page_url || null
     };
 
