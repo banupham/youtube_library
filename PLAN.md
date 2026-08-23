@@ -62,7 +62,7 @@ dislike / undislike
 comment_submit
 ```
 
-Chrome popup now contains:
+Chrome popup contains:
 
 ```text
 Server URL
@@ -79,9 +79,11 @@ video_open       +0.25
 like             +1.00
 unlike           -1.00
 dislike          -1.00
-undislike         0.00
+undislike        +1.00
 comment_submit   +1.00
 ```
+
+Like/unlike and dislike/undislike are reversible deltas so toggling a state back does not leave a false accumulated score.
 
 Score model:
 
@@ -100,6 +102,8 @@ unknown
 ```
 
 For the opened watch video Chrome can read Subscribe/Subscribed state directly. For recommendation cards, `subscribed` may be inferred from an observed subscribed-channel cache; absence without complete evidence remains `unknown`.
+
+After Chrome `/finalize`, Central uses participant/device identity from the collector request to build a sanitized community profile directly and rebuild Dashboard `/`. No collector agent or second server is required for this path.
 
 ## Android `0.3.0`
 
@@ -168,7 +172,7 @@ GET  /dashboard            Dashboard alias
 GET  /profile/<id>         Browser profile HTML + interaction summary
 GET  /health               JSON status
 POST /collect              Chrome recommendation surface
-POST /finalize             Chrome temporal profile update
+POST /finalize             Chrome temporal profile + community update
 POST /v1/android/snapshot  Android raw Accessibility ingest
 POST /v1/interaction       Natural interaction ingest
 POST /v1/profile           Sanitized analyzed profile
@@ -268,8 +272,9 @@ Chrome passive recommendation collector      IMPLEMENTED 0.7.0
 Chrome natural interaction collector         IMPLEMENTED v1
 Chrome configurable central server           IMPLEMENTED
 Chrome local daily interaction score         IMPLEMENTED
+Chrome finalize → community dashboard        IMPLEMENTED
 
-Central single process :8770                 IMPLEMENTED v2.1
+Central single process :8770                 IMPLEMENTED v2.2
 Central interaction endpoint                 IMPLEMENTED
 Daily / rolling 7d/30d interaction JSON      IMPLEMENTED
 Interaction → Creator Opportunity weight     NOT ENABLED
@@ -309,4 +314,4 @@ Synthetic Viewer Robot                       SANDBOX ONLY
 
 # 12. Continuation prompt
 
-> Đọc `README.md` và `PLAN.md`. Chrome 0.7.0 và Android 0.3.0 now send recommendation/interaction evidence to the single Central Server :8770. InteractionStore writes daily + rolling 7d/30d JSON and does not store comment text. Next priority: verify Android APK artifact, then validate real Android Accessibility fixtures before building the strict node parser.
+> Đọc `README.md` và `PLAN.md`. Chrome 0.7.0 và Android 0.3.0 send recommendation/interaction evidence to the single Central Server :8770. Central 2.2 auto-promotes finalized Chrome profiles into the community dashboard. InteractionStore writes daily + rolling 7d/30d JSON and does not store comment text. Next priority: verify Android APK artifact, then validate real Android Accessibility fixtures before building the strict node parser.
