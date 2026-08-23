@@ -146,6 +146,35 @@ def main() -> None:
             write_json(path, session)
         return path
 
+    def update_library_index(profile: dict, current_profile: dict, report_path: Path, library_path: Path) -> Path:
+        path = library_root / "index.json"
+        with index_lock:
+            if path.exists():
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            else:
+                payload = {"version": "1.0.0", "profiles": []}
+            profiles = [row for row in payload.get("profiles", []) if row.get("profile_id") != profile["profile_id"]]
+            interests = current_profile.get("interest_weights") or []
+            profiles.append({
+                "profile_id": profile["profile_id"],
+                "profile_short_id": profile["profile_short_id"],
+                "profile_label": profile["profile_label"],
+                "behavior_profile_name": current_profile.get("behavior_profile_name"),
+                "certainty_score": current_profile.get("certainty_score"),
+                "top_interests": [
+                    {"id": row.get("id"), "name_vi": row.get("name_vi"), "weight": row.get("predicted_weight")}
+                    for row in interests[:4]
+                ],
+                "updated_at": current_profile.get("updated_at"),
+                "report_path": str(report_path.relative_to(repo_root)),
+                "library_path": str(library_path.relative_to(repo_root)),
+            })
+            profiles.sort(key=lambda row: str(row.get("profile_label") or row.get("profile_short_id") or ""))
+            payload["profiles"] = profiles
+            payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+            write_json(path, payload)
+        return path
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "YouTubeLibraryBridge/0.7"
 
@@ -323,11 +352,14 @@ def main() -> None:
                 self._json_response(500, {"error": "consolidated_profile_failed", "returncode": exc.returncode})
                 return
 
+            library_index = None
             try:
                 current_profile = json.loads(current_json.read_text(encoding="utf-8"))
                 behavior_name = current_profile.get("behavior_profile_name")
-            except Exception:
+                library_index = update_library_index(profile, current_profile, current_html, library_json)
+            except Exception as exc:
                 behavior_name = None
+                print(f"Warning: profile library index update failed: {exc}")
 
             self._json_response(200, {
                 "ok": True,
@@ -339,6 +371,7 @@ def main() -> None:
                 "profile_json_path": str(current_json.relative_to(repo_root)),
                 "profile_html_path": str(current_html.relative_to(repo_root)),
                 "library_path": str(library_json.relative_to(repo_root)),
+                "library_index_path": str(library_index.relative_to(repo_root)) if library_index else None,
                 "history_path": str(history_jsonl.relative_to(repo_root)),
             })
 
