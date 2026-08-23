@@ -190,6 +190,8 @@ async function submitSnapshot(payload, sender) {
   payload.collector_profile = {
     profile_id: identity.profile_id,
     profile_label: identity.profile_label,
+    participant_id: identity.participant_id,
+    device_id: identity.device_id,
     identity_source: identity.identity_source
   };
   payload.collection_session_id = sessionId;
