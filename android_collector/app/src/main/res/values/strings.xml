@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">YouTube Library Collector</string>
+    <string name="accessibility_service_description">Thu thập thụ động node tree của ứng dụng YouTube khi người tham gia đang sử dụng YouTube. Chỉ đọc, không click, không gesture, không điều khiển playback.</string>
+</resources>
