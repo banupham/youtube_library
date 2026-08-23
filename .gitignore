@@ -8,11 +8,15 @@ data/home_classified/**/*.json
 data/up_next_snapshots/**/*.json
 data/up_next_enriched/**/*.json
 data/up_next_classified/**/*.json
+data/subscriptions_snapshots/**/*.json
+data/subscriptions_enriched/**/*.json
+data/subscriptions_classified/**/*.json
 data/profile_reports/**/*.json
 data/profile_reports/**/*.html
 data/profile_library/**/*.json
 data/profile_library/**/*.jsonl
 data/collection_sessions/**/*.json
+data/collection_sessions/**/*.html
 
 # Backward compatibility for flat files created by older versions.
 data/home_snapshots/*.json
@@ -21,11 +25,15 @@ data/home_classified/*.json
 data/up_next_snapshots/*.json
 data/up_next_enriched/*.json
 data/up_next_classified/*.json
+data/subscriptions_snapshots/*.json
+data/subscriptions_enriched/*.json
+data/subscriptions_classified/*.json
 data/profile_reports/*.json
 data/profile_reports/*.html
 data/profile_library/*.json
 data/profile_library/*.jsonl
 data/collection_sessions/*.json
+data/collection_sessions/*.html
 
 # Keep directory placeholders tracked.
 !data/home_snapshots/.gitkeep
