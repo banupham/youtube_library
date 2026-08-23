@@ -22,9 +22,22 @@ class LocalSnapshotStore(private val context: Context) {
         val cap = DAILY_CAPS[surface] ?: DAILY_CAPS.getValue("unknown")
         if (count >= cap) return false
 
-        val dir = File(context.filesDir, "youtube_accessibility_snapshots").apply { mkdirs() }
-        val file = File(dir, "$day.jsonl")
-        file.appendText(snapshot.toJson().toString() + "\n", Charsets.UTF_8)
+        val line = snapshot.toJson().toString() + "\n"
+
+        // Canonical private copy used by the app/export flow.
+        appendLine(
+            File(context.filesDir, SNAPSHOT_DIR_NAME),
+            "$day.jsonl",
+            line
+        )
+
+        // ADB bridge mirror. This remains app-specific external storage rather than
+        // public Downloads, so participants do not need to copy/export files by hand.
+        // If external storage is unavailable, collection still succeeds using the
+        // canonical internal copy and the PC bridge can try run-as as a debug fallback.
+        context.getExternalFilesDir(SNAPSHOT_DIR_NAME)?.let { externalDir ->
+            appendLine(externalDir, "$day.jsonl", line)
+        }
 
         prefs.edit()
             .putString("last_signature_$surface", snapshot.treeSignature)
@@ -35,7 +48,14 @@ class LocalSnapshotStore(private val context: Context) {
         return true
     }
 
+    private fun appendLine(dir: File, fileName: String, line: String) {
+        dir.mkdirs()
+        File(dir, fileName).appendText(line, Charsets.UTF_8)
+    }
+
     companion object {
+        const val SNAPSHOT_DIR_NAME = "youtube_accessibility_snapshots"
+
         val DAILY_CAPS = mapOf(
             "home" to 4,
             "watch" to 24,
