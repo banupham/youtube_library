@@ -17,11 +17,13 @@
     .section { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ddd; }
     .checkline { display: flex; align-items: center; gap: 4px; }
     .auto-box { padding: 10px; border: 1px solid #cfd8ea; background: #f5f8ff; border-radius: 8px; }
+    .auto-state { margin-top: 8px; font-size: 13px; font-weight: 600; }
+    .secondary-button { background: #fff; border: 1px solid #aab5ca; border-radius: 6px; }
   </style>
 </head>
 <body>
   <strong>YouTube Recommendation Collector</strong>
-  <p class="hint">Ưu tiên passive capture khi người tham gia tự dùng YouTube. Manual mode bên dưới chỉ là fallback/test. Collector không tự click/play/like/comment/subscribe.</p>
+  <p class="hint">Extension dành cho participant đã tham gia cộng đồng nghiên cứu. Passive collector tự hoạt động khi profile này truy cập YouTube. Collector không tự click/play/like/comment/subscribe.</p>
 
   <div class="profile-box">
     <label>
@@ -34,17 +36,16 @@
 
   <div class="section auto-box">
     <strong>Passive natural-use collector</strong>
-    <p class="hint">Khi bật, extension chỉ đọc Home/Up Next/Subscriptions trên những trang bạn tự mở và tự sử dụng. Nó không tự mở tab/video và có daily caps để tránh biến việc đo thành hành vi nhân tạo.</p>
-    <label class="checkline">
-      <input id="passiveAutoEnabled" type="checkbox">
-      Bật passive collection tự động
-    </label>
+    <p class="hint">Mặc định ON ngay khi extension được cài. Khi bạn tự mở YouTube, extension chỉ đọc Home/Up Next/Subscriptions trên những trang bạn tự truy cập. Không cần mở popup hoặc bật checkbox.</p>
+    <div id="passiveState" class="auto-state">Đang kiểm tra trạng thái...</div>
+    <div id="passiveLastCapture" class="hint">Đang đọc lần capture gần nhất...</div>
+    <button id="passivePauseToggle" class="secondary-button" type="button">Tạm dừng thu thập</button>
     <div class="hint">Home tối đa 2 snapshot/ngày · Up Next từ tối đa 8 watch pages tự mở/ngày · Subscriptions/Channels tối đa 1 snapshot/ngày.</div>
   </div>
 
   <div class="section">
     <strong>Manual fallback / test</strong>
-    <p class="hint">Chế độ này giữ pipeline cũ để test collector hoặc bổ sung snapshot khi cần.</p>
+    <p class="hint">Chế độ này giữ pipeline cũ để debug/test hoặc bổ sung snapshot khi cần. Không phải luồng thu thập tự nhiên mặc định.</p>
   </div>
 
   <label>
