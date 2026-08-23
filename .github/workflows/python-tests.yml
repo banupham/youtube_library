@@ -24,6 +24,7 @@ jobs:
           python -m py_compile scripts/community/community_server.py
           python -m py_compile scripts/community/collector_agent.py
           python -m py_compile scripts/android/inspect_accessibility_snapshots.py
+          python -m py_compile scripts/android/android_bridge.py
       - name: Validate JSON seed/schema/manifest files
         run: |
           python -m json.tool taxonomy/interest_relations.v1.json > /dev/null
