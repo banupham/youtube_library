@@ -5,20 +5,22 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>YouTube Recommendation Collector</title>
   <style>
-    body { font-family: Arial, sans-serif; width: 350px; margin: 14px; }
+    body { font-family: Arial, sans-serif; width: 360px; margin: 14px; }
     label { display: block; margin-top: 10px; font-size: 13px; }
     input { width: 100%; box-sizing: border-box; padding: 7px; margin-top: 4px; }
+    input[type="checkbox"] { width: auto; margin-right: 7px; vertical-align: middle; }
     button { width: 100%; margin-top: 14px; padding: 10px; cursor: pointer; }
     #status { margin-top: 12px; white-space: pre-wrap; font-size: 12px; line-height: 1.4; }
     .hint { color: #555; font-size: 12px; line-height: 1.4; }
     .profile-box { margin: 10px 0 4px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
     .profile-id { margin-top: 5px; font-family: monospace; font-size: 11px; color: #666; word-break: break-all; }
     .section { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ddd; }
+    .checkline { display: flex; align-items: center; gap: 4px; }
   </style>
 </head>
 <body>
   <strong>YouTube Recommendation Collector</strong>
-  <p class="hint">Đọc Home + Up Next theo profile hiện tại. Không click, không mở player, không play/like/comment/subscribe.</p>
+  <p class="hint">Đọc Home + Up Next + Subscriptions theo profile hiện tại. Không click, không mở player, không play/like/comment/subscribe.</p>
 
   <div class="profile-box">
     <label>
@@ -40,6 +42,19 @@
   </label>
 
   <div class="section">
+    <strong>Subscriptions evidence</strong>
+    <p class="hint">Đọc read-only `/feed/subscriptions` và danh sách channel quan sát được từ `/feed/channels`. Đây là explicit-affinity evidence, không phải watch history.</p>
+    <label class="checkline">
+      <input id="collectSubscriptions" type="checkbox" checked>
+      Thu thập Subscriptions trong phiên này
+    </label>
+    <label>
+      Số video tối đa từ Subscriptions feed
+      <input id="subscriptionLimit" type="number" min="10" max="100" value="60">
+    </label>
+  </div>
+
+  <div class="section">
     <strong>Up Next evidence</strong>
     <div class="hint">Sau Home, extension chọn ngẫu nhiên vài seed và request watch-page HTML nhiều lần để đo Up Next ổn định/biến động. Các replay chỉ là evidence nội bộ; cuối phiên chỉ tạo một báo cáo tổng hợp.</div>
 
@@ -59,9 +74,10 @@
     </label>
   </div>
 
-  <button id="collect">Collect + update Profile Library</button>
+  <button id="collect">Collect daily evidence + update Profile Library</button>
   <div id="status">Bridge cần chạy tại 127.0.0.1:8765.</div>
 
+  <script src="subscriptions.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
