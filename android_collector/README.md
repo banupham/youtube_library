@@ -53,9 +53,11 @@ video_open       +0.25
 like             +1.00
 unlike           -1.00
 dislike          -1.00
-undislike         0.00
+undislike        +1.00
 comment_submit   +1.00
 ```
+
+Like/unlike and dislike/undislike are reversible score deltas.
 
 Score model:
 
@@ -198,4 +200,6 @@ The app is considered installable only when `:app:assembleDebug` succeeds and Gi
 youtube-library-collector-debug
 ```
 
-The source/workflow have been revised for the previous build failure, but do not call the APK ready until that artifact is confirmed.
+Every workflow attempt also uploads `android-build-log` with Gradle output even when the APK build fails, so the next failure can be diagnosed from the actual log instead of guessing.
+
+The source/workflow have been revised for the previous build failure, but do not call the APK ready until the APK artifact is confirmed.
