@@ -34,7 +34,7 @@ class MainActivity : Activity() {
             textSize = 22f
         }
         val disclosure = TextView(this).apply {
-            text = "Ứng dụng dùng Android AccessibilityService để đọc cây AccessibilityNodeInfo CHỈ khi ứng dụng YouTube (com.google.android.youtube) đang mở. Khi Auto sync được cấu hình, snapshot YouTube hợp lệ sẽ tự gửi tới community server của dự án. Collector không click, không gesture, không play/like/comment/subscribe và không đọc ứng dụng khác."
+            text = "Ứng dụng dùng Android AccessibilityService CHỈ khi YouTube (com.google.android.youtube) đang mở. Collector đọc cây AccessibilityNodeInfo và quan sát các thao tác tự nhiên được YouTube phát ra như mở video, like/dislike và gửi comment. Ứng dụng KHÔNG click, không gesture, không tự play/like/comment/subscribe. Với comment, chỉ gửi sự kiện đã gửi comment; không thu nội dung comment hay nội dung người dùng gõ. Snapshot và event hợp lệ được lưu/queue rồi tự đồng bộ tới server đã cấu hình."
             textSize = 15f
             setPadding(0, 28, 0, 28)
         }
@@ -78,11 +78,11 @@ class MainActivity : Activity() {
         }
 
         val settingsTitle = TextView(this).apply {
-            text = "\nCommunity server / Auto sync"
+            text = "\nCentral server / Auto sync"
             textSize = 18f
         }
         val settingsHint = TextView(this).apply {
-            text = "Cấu hình một lần. Sau đó mỗi snapshot hợp lệ được lưu local trước rồi tự xếp hàng upload. Nếu mất mạng/server lỗi, queue local giữ lại để retry. HTTPS được yêu cầu cho server thật."
+            text = "Cấu hình một lần. Snapshot và interaction event hợp lệ được lưu/queue local trước rồi tự upload. Nếu mất mạng hoặc server lỗi, queue giữ lại để retry. HTTPS được yêu cầu cho server thật."
             textSize = 13f
         }
 
@@ -111,7 +111,7 @@ class MainActivity : Activity() {
             textSize = 12f
         }
         val autoSync = CheckBox(this).apply {
-            text = "Tự động gửi snapshot lên server"
+            text = "Tự động gửi snapshot + interaction events lên server"
             isChecked = if (prefs.contains(CollectorSettings.KEY_AUTO_SYNC)) current.autoSync else true
         }
         val allowHttp = CheckBox(this).apply {
@@ -148,7 +148,7 @@ class MainActivity : Activity() {
         }
 
         val exportButton = Button(this).apply {
-            text = "Xuất snapshot JSONL hôm nay (fallback)"
+            text = "Xuất snapshot JSONL hôm nay (debug fallback)"
             setOnClickListener {
                 val source = todaySnapshotFile()
                 if (!source.exists() || source.length() == 0L) {
