@@ -4,41 +4,36 @@
 
 The project treats observed profile data as a **consenting community panel** rather than as a proxy for all YouTube users.
 
-The network has three separate modules:
-
 ```text
-PLATFORM COLLECTOR
-(browser / Android adapter / future platforms)
+PLATFORM COLLECTORS
+Browser extension + Android Accessibility collector
         ↓
-LOCAL PROFILE ENGINE
-(Home + Up Next + Subscriptions + daily longitudinal state)
+LOCAL PROFILE STATE
         ↓ sanitized summary only
-COMMUNITY INGESTION + CREATOR AGGREGATOR
+COMMUNITY INGESTION + PARTICIPANT-BALANCED AGGREGATION
         ↓
 Creator Community Intelligence
 ```
 
-The creator-facing result is community-level, not a technical dump of every profile.
+## 1. Participant vs profile/device slot
 
-## 1. Participant vs profile
-
-A participant is a real consenting project contributor. One participant may have one or more YouTube/browser profiles.
+A participant is a real consenting project contributor. One participant may contribute multiple browser profiles or device-local collection slots.
 
 ```text
 Participant A
-├── Profile A1
-├── Profile A2
-└── Profile A3
+├── Browser Profile A1
+├── Browser Profile A2
+└── Android Slot A3
 
 Participant B
-└── Profile B1
+└── Browser Profile B1
 ```
 
 The community engine does **not** count the example above as four independent people.
 
-Each participant receives equal total community weight. Multiple profiles divide that participant's weight according to profile quality/certainty.
+Each participant receives equal total community weight. Multiple profile/device slots divide that participant's weight according to profile quality/certainty.
 
-Reports always expose both:
+Reports expose:
 
 ```text
 participant_count
@@ -49,83 +44,161 @@ usable_profile_count
 
 ## 2. Platform Collector contract
 
-A platform collector may collect only read-only evidence available to that participant and platform.
+A collector may collect only disclosed, read-only evidence from the participant's platform.
 
-Current browser collector supports:
+Collectors must not automatically create engagement or alter recommendation state through synthetic actions.
 
-```text
-Home recommendation exposure
-Up Next recommendation exposure
-Subscriptions feed / subscribed-channel affinity
-daily longitudinal state
-```
-
-It does not automatically click, play, like, comment, subscribe, or create traffic.
-
-### Participation / auto-start rule
-
-Joining the project and installing the collector establishes participation at the application level. The participant does **not** need to enable a runtime checkbox every time.
-
-Browser extension `0.6.1` uses:
+Forbidden collector behavior:
 
 ```text
-extension installed for a participating profile
-        ↓
-passive collection defaults ON
-        ↓
-participant opens/uses YouTube normally
-        ↓
-collector observes allowed surfaces automatically
-        ↓
-maximum configured daily snapshot cadence
+auto click
+auto play
+auto like/comment/subscribe
+gesture/input injection solely for collection
 ```
 
-The popup exposes only a **Pause collection / Resume collection** control. An explicit `false` state is preserved across browser restarts; otherwise passive collection is enabled by default.
+## 3. Browser collector
 
-The collector should not open videos or manufacture sessions solely to change recommendation state.
-
-### Natural capture rule
-
-Passive capture starts automatically when the participant visits YouTube, but it only captures surfaces the participant naturally reaches:
+Extension `0.6.1` defaults passive collection ON after installation for a participating profile.
 
 ```text
-Home opened naturally
-→ passive Home snapshot
-
-/watch?v=... opened naturally
-→ passive Up Next snapshot
-
-/feed/subscriptions opened naturally
-→ passive Subscriptions snapshot
+participant opens YouTube normally
+→ Home opened naturally → passive Home snapshot
+→ watch page opened naturally → passive Up Next snapshot
+→ Subscriptions opened naturally → passive Subscriptions snapshot
 ```
 
-It does not auto-navigate, auto-scroll, or auto-play in passive mode.
+Popup exposes Pause/Resume. Passive mode does not auto-navigate, auto-scroll or auto-play.
 
-## 3. Android participation
+## 4. Android Accessibility collector
 
-Android is an adapter to the same submission protocol, not a separate data model.
-
-Important limitation: the public YouTube Data API does not expose a user's personalized Home recommendation feed. A native Android collector therefore must not claim it can reproduce browser Home/Up Next data unless a legitimate read-only interface has been validated.
-
-Initial Android-compatible paths may include:
-
-- read-only subscription/account metadata through officially authorized APIs where available;
-- a dedicated web collector container controlled by the participant, if authentication and platform policy allow it;
-- other explicit read-only surfaces added later.
-
-Accessibility scraping of the native YouTube app is **not** the default design because it is invasive and can capture unrelated sensitive UI data.
-
-Every Android adapter ultimately emits the same sanitized profile summary schema:
+Android collector foundation lives in:
 
 ```text
-schemas/community_profile_submission.v1.schema.json
+android_collector/
 ```
 
-## 4. Local profile engine
+The participant first sees a prominent in-app disclosure, then explicitly opens Android Accessibility Settings and enables the service.
 
-Raw recommendation data remains local by default.
+After the service is enabled:
 
-The existing profile pipeline builds:
+```text
+participant opens native YouTube normally
+        ↓
+AccessibilityService receives YouTube UI events
+        ↓
+rootInActiveWindow / AccessibilityNodeInfo tree
+        ↓
+bounded local snapshot
+```
+
+The service is restricted both statically and at runtime to:
+
+```text
+com.google.android.youtube
+```
+
+Service configuration:
+
+```text
+android_collector/app/src/main/res/xml/accessibility_service_config.xml
+```
+
+It declares:
+
+```text
+canRetrieveWindowContent=true
+packageNames=com.google.android.youtube
+FLAG_REPORT_VIEW_IDS
+```
+
+and listens to:
+
+```text
+TYPE_WINDOW_STATE_CHANGED
+TYPE_WINDOW_CONTENT_CHANGED
+TYPE_VIEW_SCROLLED
+```
+
+The Android collector does **not** call Accessibility interaction APIs such as `performAction()` or `dispatchGesture()`.
+
+### 4.1 Android v0.1 raw snapshot
+
+Schema:
+
+```text
+schemas/android_accessibility_snapshot.v1.schema.json
+```
+
+Each bounded node may contain:
+
+```text
+text
+contentDescription
+viewIdResourceName
+className
+selected/clickable/scrollable
+child count
+bounds
+depth
+```
+
+Traversal/string limits prevent storing an unbounded UI dump.
+
+Raw snapshots stay in app-internal storage:
+
+```text
+files/youtube_accessibility_snapshots/YYYY-MM-DD.jsonl
+```
+
+Android v0.1 does not request `INTERNET` permission and does not upload raw node snapshots.
+
+### 4.2 Surface detection
+
+Initial provisional surface labels:
+
+```text
+home
+watch
+subscriptions
+shorts
+search
+unknown
+```
+
+The first detector is intentionally heuristic. YouTube native accessibility hierarchies can change across app versions/locales and do not necessarily map one-to-one to Android Views.
+
+Therefore the parser must be developed from real participant-consented fixtures:
+
+```text
+real Home/Watch/Subscriptions/Shorts/Search node snapshots
+→ inspect stable patterns
+→ fixture tests
+→ node-to-video-card parser
+→ normalized surface evidence
+```
+
+Local inspector:
+
+```bash
+python scripts/android/inspect_accessibility_snapshots.py snapshots.jsonl
+```
+
+Use `--show-text` only locally because text/content descriptions are participant-specific evidence.
+
+### 4.3 Android account-switch limitation
+
+Android v0.1 deliberately does not scrape Google account email/name to identify YouTube account switching.
+
+One app installation currently represents one Android collection slot. If a participant mixes multiple YouTube accounts in the same app, evidence may mix. A later version should use an explicit non-sensitive local slot selector instead of scraping account identity.
+
+### 4.4 Accessibility policy boundary
+
+The collector is not a disability-support accessibility tool (`isAccessibilityTool=false`). If distributed through Google Play, it requires the appropriate Accessibility declaration, prominent disclosure/affirmative consent, Privacy Policy and Data Safety disclosure for the actual shipped behavior.
+
+## 5. Local profile engine
+
+Browser already has the mature local pipeline:
 
 ```text
 Home + Up Next + Subscriptions
@@ -136,84 +209,63 @@ Home + Up Next + Subscriptions
 → current longitudinal profile
 ```
 
-The community server does not need raw cookies, Google identities, or complete browsing history.
+Android will reach the same logical output after its node-to-video parser is validated.
 
-## 5. Sanitized submission
+The goal is not for the community server to understand platform-specific raw UI trees. Platform-specific collectors should converge into the same profile semantics before community upload.
 
-`scripts/community/submit_profile.py` converts the current longitudinal profile into a small community payload containing only fields needed for community analysis:
+## 6. Sanitized community submission
+
+Canonical schema:
+
+```text
+schemas/community_profile_submission.v1.schema.json
+```
+
+The sanitized payload contains only fields needed for community analysis:
 
 ```text
 random participant_id
 random device_id
-stable random-derived profile_key
-profile analysis version
+stable profile_key
+analysis version
 certainty
 daily observation count
-interest weights + trend
+interest weights + trends
 intent weights
 keyword trends
 tag trends
 ```
 
-It intentionally excludes:
+It excludes:
 
 ```text
-cookies
-passwords
+cookies/passwords
 Google email/account identifiers
-profile display label
-raw Home/Up Next rows
-raw video URLs/history
+raw browser recommendation rows
+raw Android Accessibility node tree
+raw browsing/watch history
 subscribed-channel names/list
 ```
 
-Local IDs live in:
+## 7. Browser automatic sync
 
-```text
-data/collector_identity.json
-```
-
-and are git-ignored.
-
-## 6. Automatic sync agent
-
-Run:
+Current desktop agent:
 
 ```bash
 python scripts/community/collector_agent.py --endpoint https://COMMUNITY_SERVER
 ```
 
-or set:
+It watches browser local longitudinal profiles and uploads only sanitized summaries.
 
-```text
-YT_LIBRARY_COMMUNITY_ENDPOINT
-YT_LIBRARY_COMMUNITY_TOKEN
-```
+Android network sync will be added only after an Android local profile summary exists; raw Accessibility snapshots remain local.
 
-The agent watches:
+## 8. Community ingestion server
 
-```text
-data/profile_library/profile_*.json
-```
-
-Whenever a local collector updates a current profile, the agent automatically builds and uploads the sanitized summary.
-
-It may optionally launch the local browser bridge:
+Central server:
 
 ```bash
-python scripts/community/collector_agent.py --endpoint https://COMMUNITY_SERVER --launch-bridge
-```
-
-## 7. Community ingestion server
-
-Run centrally:
-
-```bash
-set YT_LIBRARY_COMMUNITY_TOKEN=YOUR_RANDOM_SECRET
 python scripts/community/community_server.py --host 0.0.0.0 --port 8770
 ```
-
-For internet deployment, place it behind HTTPS/reverse proxy/firewall. Do not expose an unauthenticated HTTP service publicly.
 
 Endpoint:
 
@@ -221,21 +273,22 @@ Endpoint:
 POST /v1/profile
 ```
 
-Every accepted submission replaces that profile's current central snapshot and rebuilds:
+Use HTTPS/reverse proxy/firewall/authentication for internet deployment.
+
+Accepted submissions rebuild:
 
 ```text
 data/community_reports/current.json
 data/community_reports/current.html
 ```
 
-## 8. Creator Community Intelligence
+## 9. Creator Community Intelligence
 
 The central report is participant-balanced.
 
 For each content lane it computes:
 
 ```text
-community segment key
 matched profile count
 matched participant count
 profile coverage
@@ -250,68 +303,36 @@ top content intent
 community opportunity score
 ```
 
-Example interpretation:
+Example:
 
 ```text
 Community segment: science_technology::tutorial
 Participants matched: 8 / 12
 Profiles matched: 13 / 21
 Core keys: AI video, creator workflow, automation
-Core tags: ai video, creator tools
 Expansion keys: agent workflow, AI voice
 Fit band: strong
 ```
 
-This means the lane is supported across the observed consenting community panel. It does **not** mean there is a known 67% chance of YouTube impressions/views.
-
-## 9. Creator-facing wording
-
-Prefer:
-
-> This content direction matches 8/12 observed participants and 13/21 usable profiles, with rising support around these expansion keys.
-
-Avoid:
-
-> There is a 67% probability YouTube will recommend this video.
-
-The project does not have access to YouTube's internal recommendation probabilities.
+This is evidence from the observed community panel, not a known probability of YouTube impressions/views.
 
 ## 10. Architecture boundary
 
 ```text
 Observed community data
 → creator opportunity
-→ creator makes/publishes content organically
+→ creator publishes organically
 → external real audience behaves naturally
 ```
 
-Project collectors are measurement infrastructure. They are not a coordinated initial-view or engagement network.
+Collectors are measurement infrastructure, not a coordinated initial-view or engagement network.
 
-## 11. Current browser behavior
+## 11. Next engineering slice
 
-Extension `0.6.1`:
-
-```text
-install/reload extension
-→ passive collection defaults ON
-→ visit youtube.com
-→ content script schedules capture for the natural route
-→ daily cap prevents excessive snapshots
-```
-
-Popup behavior:
-
-```text
-state shown as ACTIVE / PAUSED
-button: Pause collection / Resume collection
-```
-
-No runtime opt-in checkbox is required after installation.
-
-## 12. Next engineering slice
-
-1. Validate auto-on browser capture with at least two independent participants/devices.
-2. Validate that pause persists and resume can schedule capture on the current route without reopening YouTube.
-3. Validate community ingestion with at least two independent participants/devices.
-4. Build Android adapter against the same sanitized submission contract, starting only with read-only surfaces that can be accessed legitimately.
-5. Move Creator Community Intelligence to the primary creator UI; individual profile reports become drill-down evidence.
+1. Build/install Android collector v0.1 on test devices.
+2. Gather participant-consented node fixtures from native YouTube Home/Watch/Subscriptions/Shorts/Search.
+3. Build fixture-tested node-to-video-card parser.
+4. Produce Android daily/temporal profile semantics compatible with browser output.
+5. Emit `community_profile_submission.v1` on Android and add sanitized sync.
+6. Validate mixed Browser + Android community aggregation across at least two independent participants.
+7. Make Creator Community Intelligence the primary creator UI.
