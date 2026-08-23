@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YouTube Library Recommendation Collector",
-  "version": "0.3.0",
-  "description": "Read-only collector for YouTube Home and Up Next recommendation surfaces. It never clicks or plays videos.",
+  "version": "0.3.1",
+  "description": "Read-only collector for YouTube Home and repeated Up Next recommendation sampling. It never clicks or plays videos.",
   "permissions": [
     "activeTab",
     "scripting",
