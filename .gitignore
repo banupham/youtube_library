@@ -3,7 +3,10 @@ data/browser_profile/
 
 # Personalized YouTube Home snapshots/results are local by default.
 data/home_snapshots/*.json
+data/home_enriched/*.json
 data/home_classified/*.json
+data/profile_reports/*.json
+data/profile_reports/*.html
 
 # Keep directory placeholders tracked.
 !data/home_snapshots/.gitkeep
