@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>YouTube Recommendation Collector</title>
+  <title>YouTube Community Collector</title>
   <style>
     body { font-family: Arial, sans-serif; width: 360px; margin: 14px; color:#1f2937; }
     label { display: block; margin-top: 10px; font-size: 13px; }
     input { width: 100%; box-sizing: border-box; padding: 7px; margin-top: 4px; }
     input[type="checkbox"] { width: auto; margin-right: 7px; vertical-align: middle; }
     button { width: 100%; margin-top: 12px; padding: 10px; cursor: pointer; border-radius:8px; border:1px solid #cbd5e1; background:#fff; }
-    #status { margin-top: 12px; white-space: pre-wrap; font-size: 12px; line-height: 1.4; }
+    #status,#serverStatus { margin-top: 10px; white-space: pre-wrap; font-size: 12px; line-height: 1.4; }
     .hint { color: #64748b; font-size: 12px; line-height: 1.4; }
     .profile-box,.section { margin-top: 12px; padding: 11px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; }
     .profile-id { margin-top: 5px; font-family: monospace; font-size: 11px; color: #64748b; word-break: break-all; }
@@ -22,13 +22,13 @@
 </head>
 <body>
   <strong>YouTube Community Collector</strong>
-  <p class="hint">Collector tự hoạt động khi profile này dùng YouTube. Một Central Server duy nhất: <b>127.0.0.1:8770</b>.</p>
+  <p class="hint">Dùng YouTube bình thường. Collector tự gửi recommendation evidence và các interaction event được hỗ trợ tới Central Server.</p>
 
   <div class="profile-box">
     <label>Tên profile nghiên cứu
       <input id="profileLabel" type="text" maxlength="60" placeholder="Ví dụ: Profile A">
     </label>
-    <div class="profile-id">ID: <span id="profileId">đang tạo...</span></div>
+    <div class="profile-id">Profile ID: <span id="profileId">đang tạo...</span></div>
   </div>
 
   <div class="section">
@@ -36,40 +36,46 @@
     <div id="passiveState" class="auto-state">Đang kiểm tra...</div>
     <div id="passiveLastCapture" class="hint">Đang đọc lần capture gần nhất...</div>
     <button id="passivePauseToggle" type="button">Tạm dừng thu thập</button>
-    <div class="hint">Chỉ quan sát Home, Up Next và Subscriptions khi participant tự dùng YouTube. Không tự click/play/like/comment/subscribe.</div>
+    <div class="hint">Thu Home, Up Next, Subscriptions và sự kiện video_open / like / unlike / dislike / comment_submit. Comment chỉ ghi sự kiện, không ghi nội dung.</div>
   </div>
+
+  <details open>
+    <summary>Central Server</summary>
+    <label>Server URL
+      <input id="communityServerUrl" type="url" placeholder="http://127.0.0.1:8770">
+    </label>
+    <label>Project token
+      <input id="communityServerToken" type="password" placeholder="để trống nếu localhost không token">
+    </label>
+    <label>Participant ID
+      <input id="collectorParticipantId" type="text" maxlength="200" placeholder="dùng cùng mã trên các profile của cùng một người">
+    </label>
+    <button id="saveServerSettings" type="button">Lưu cấu hình server</button>
+    <div id="serverStatus" class="hint"></div>
+  </details>
 
   <details>
     <summary>Manual test / debug</summary>
+    <div class="hint">Manual debug hiện ưu tiên localhost; passive collector là luồng sản phẩm chính.</div>
     <label>Số lần scroll Home
       <input id="scrolls" type="number" min="0" max="50" value="8">
     </label>
     <label>Delay mỗi scroll (ms)
       <input id="delay" type="number" min="200" max="10000" value="1500">
     </label>
-    <label class="checkline">
-      <input id="collectSubscriptions" type="checkbox" checked>
-      Thu thập Subscriptions
-    </label>
-    <label>Số video tối đa từ Subscriptions
-      <input id="subscriptionLimit" type="number" min="10" max="100" value="60">
-    </label>
-    <label>Số Home seed đọc Up Next
-      <input id="upNextSamples" type="number" min="0" max="10" value="3">
-    </label>
-    <label>Số replay mỗi seed
-      <input id="upNextReplays" type="number" min="1" max="10" value="3">
-    </label>
-    <label>Số Up Next mỗi replay
-      <input id="upNextLimit" type="number" min="5" max="40" value="20">
-    </label>
+    <label class="checkline"><input id="collectSubscriptions" type="checkbox" checked> Thu thập Subscriptions</label>
+    <label>Số video tối đa từ Subscriptions<input id="subscriptionLimit" type="number" min="10" max="100" value="60"></label>
+    <label>Số Home seed đọc Up Next<input id="upNextSamples" type="number" min="0" max="10" value="3"></label>
+    <label>Số replay mỗi seed<input id="upNextReplays" type="number" min="1" max="10" value="3"></label>
+    <label>Số Up Next mỗi replay<input id="upNextLimit" type="number" min="5" max="40" value="20"></label>
     <button id="collect">Manual collect + mở kết quả</button>
   </details>
 
-  <div id="status">Central Server cần chạy tại 127.0.0.1:8770.</div>
+  <div id="status">Passive collector sẽ dùng Server URL đã lưu.</div>
 
   <script src="subscriptions.js"></script>
   <script src="popup.js"></script>
   <script src="popup_passive.js"></script>
+  <script src="popup_settings.js"></script>
 </body>
 </html>
