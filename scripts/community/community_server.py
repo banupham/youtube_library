@@ -1,43 +1,37 @@
 #!/usr/bin/env python3
-"""Central ingestion gateway for community profiles and collector snapshots.
+"""Single-process central server for YouTube Library.
 
-External canonical port: 8770.
+Canonical runtime:
 
-The central server exposes community APIs plus the browser collector compatibility
-endpoints. During the Chrome transition it owns (or reuses) the legacy browser
-profile engine on an internal loopback port and proxies /collect + /finalize to
-it. Participants therefore run only this central entrypoint.
+    python scripts/community/community_server.py
 
-Evidence layers remain separated:
-* POST /v1/profile accepts sanitized profile summaries and rebuilds the creator
-  community report.
-* POST /v1/android/snapshot accepts bounded raw Accessibility snapshots.
-* POST /collect and /finalize are Chrome compatibility endpoints routed to the
-  internal browser profile engine during migration.
+One process, one port (8770 by default). Chrome collection, Android ingest,
+profile analysis, community aggregation, and human-facing HTML are exposed from
+this entrypoint. No secondary HTTP bridge is started.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import os
 import re
-import socket
 import subprocess
 import sys
 import threading
-import time
-import urllib.error
-import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from browser_pipeline import BrowserPipeline
 
 MAX_BODY_BYTES = 2_000_000
 ALLOWED_PLATFORMS = {"browser", "android", "other"}
 YOUTUBE_ANDROID_PACKAGE = "com.google.android.youtube"
 ANDROID_EXTRACTION_MODE = "android_accessibility_node_tree_read_only"
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+PROFILE_SHORT_RE = re.compile(r"^[A-Za-z0-9]{1,32}$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,17 +42,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--android-ingest-dir", default="data/android_ingest")
     parser.add_argument("--report-json", default="data/community_reports/current.json")
     parser.add_argument("--report-html", default="data/community_reports/current.html")
-    parser.add_argument(
-        "--browser-engine-port",
-        type=int,
-        default=8765,
-        help="Internal loopback port for the transitional Chrome profile engine.",
-    )
-    parser.add_argument(
-        "--no-browser-engine",
-        action="store_true",
-        help="Do not auto-start the transitional Chrome profile engine.",
-    )
+    parser.add_argument("--no-enrich", action="store_true")
+    parser.add_argument("--no-classify", action="store_true")
     return parser.parse_args()
 
 
@@ -152,7 +137,6 @@ def validate_android_ingest(payload: object) -> list[str]:
     if not isinstance(snapshot, dict):
         errors.append("snapshot must be an object")
         return errors
-
     if snapshot.get("schema_version") != "1.0.0":
         errors.append("unsupported snapshot.schema_version")
     if snapshot.get("platform") != "android":
@@ -165,17 +149,14 @@ def validate_android_ingest(payload: object) -> list[str]:
     captured_at = str(snapshot.get("captured_at") or "")
     if len(captured_at) < 10 or not DAY_RE.match(captured_at[:10]):
         errors.append("invalid snapshot.captured_at")
-
     signature = str(snapshot.get("tree_signature") or "")
     if not 8 <= len(signature) <= 128:
         errors.append("invalid snapshot.tree_signature")
-
     nodes = snapshot.get("nodes")
     if not isinstance(nodes, list):
         errors.append("snapshot.nodes must be a list")
     elif len(nodes) > 450:
         errors.append("snapshot.nodes exceeds 450")
-
     try:
         node_count = int(snapshot.get("node_count"))
         if not 0 <= node_count <= 450:
@@ -184,7 +165,6 @@ def validate_android_ingest(payload: object) -> list[str]:
             errors.append("snapshot.node_count does not match nodes length")
     except (TypeError, ValueError):
         errors.append("invalid snapshot.node_count")
-
     surface = snapshot.get("surface_guess")
     if not isinstance(surface, dict) or not str(surface.get("surface") or ""):
         errors.append("invalid snapshot.surface_guess")
@@ -208,12 +188,17 @@ def file_contains_tree_signature(path: Path, signature: str) -> bool:
     return False
 
 
-def port_open(host: str, port: int, timeout: float = 0.25) -> bool:
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
+def empty_dashboard() -> str:
+    return """<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YouTube Library</title><style>
+body{margin:0;background:#0f1115;color:#f4f6f8;font-family:Inter,system-ui,sans-serif}
+main{max-width:980px;margin:auto;padding:38px 20px}.card{background:#181c22;border:1px solid #303640;border-radius:18px;padding:24px}
+a{color:#a9c1ff}code{background:#252a33;padding:3px 7px;border-radius:7px}.muted{color:#aab2bf}
+</style></head><body><main><div class="card"><h1>YouTube Library</h1>
+<p>Central server đang chạy. Chưa có đủ community profile để tạo Creator Dashboard.</p>
+<p class="muted">Chrome và Android có thể tiếp tục gửi dữ liệu vào cùng server này.</p>
+<p><a href="/health">Xem trạng thái server</a></p></div></main></body></html>"""
 
 
 def main() -> None:
@@ -229,50 +214,16 @@ def main() -> None:
     report_json = resolve(args.report_json)
     report_html = resolve(args.report_html)
     report_builder = repo_root / "scripts" / "community" / "build_community_report.py"
-    browser_engine_script = repo_root / "scripts" / "homepage" / "home_bridge.py"
     input_dir.mkdir(parents=True, exist_ok=True)
     android_ingest_dir.mkdir(parents=True, exist_ok=True)
-    report_json.parent.mkdir(parents=True, exist_ok=True)
+    report_html.parent.mkdir(parents=True, exist_ok=True)
     token = os.environ.get("YT_LIBRARY_COMMUNITY_TOKEN")
-    write_lock = threading.Lock()
-
-    browser_engine_process: subprocess.Popen | None = None
-    browser_engine_host = "127.0.0.1"
-    browser_engine_port = int(args.browser_engine_port)
-
-    if not args.no_browser_engine:
-        if port_open(browser_engine_host, browser_engine_port):
-            print(
-                f"Chrome profile engine -> reuse existing "
-                f"http://{browser_engine_host}:{browser_engine_port}"
-            )
-        else:
-            browser_engine_process = subprocess.Popen(
-                [
-                    sys.executable,
-                    str(browser_engine_script),
-                    "--host",
-                    browser_engine_host,
-                    "--port",
-                    str(browser_engine_port),
-                ],
-                cwd=str(repo_root),
-            )
-            deadline = time.time() + 8.0
-            while time.time() < deadline and not port_open(browser_engine_host, browser_engine_port):
-                if browser_engine_process.poll() is not None:
-                    break
-                time.sleep(0.15)
-            if port_open(browser_engine_host, browser_engine_port):
-                print(
-                    f"Chrome profile engine -> managed internally at "
-                    f"http://{browser_engine_host}:{browser_engine_port}"
-                )
-            else:
-                print(
-                    "WARNING: Chrome profile engine did not become ready. "
-                    "Android/community APIs can still run, but Chrome /collect and /finalize will fail."
-                )
+    write_lock = threading.RLock()
+    browser_pipeline = BrowserPipeline(
+        repo_root,
+        no_enrich=args.no_enrich,
+        no_classify=args.no_classify,
+    )
 
     def rebuild_report() -> None:
         subprocess.run(
@@ -290,43 +241,13 @@ def main() -> None:
             check=True,
         )
 
-    def proxy_browser_engine(endpoint: str, payload: object) -> tuple[int, dict]:
-        if not port_open(browser_engine_host, browser_engine_port):
-            return 503, {
-                "error": "browser_engine_unavailable",
-                "detail": f"internal browser engine not listening on {browser_engine_host}:{browser_engine_port}",
-            }
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        request = urllib.request.Request(
-            f"http://{browser_engine_host}:{browser_engine_port}{endpoint}",
-            data=body,
-            method="POST",
-            headers={"Content-Type": "application/json; charset=utf-8"},
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=180) as response:
-                raw = response.read()
-                try:
-                    data = json.loads(raw.decode("utf-8"))
-                except Exception:
-                    data = {"ok": True, "upstream_text": raw.decode("utf-8", errors="replace")[:1000]}
-                return int(response.status), data
-        except urllib.error.HTTPError as exc:
-            raw = exc.read()
-            try:
-                data = json.loads(raw.decode("utf-8"))
-            except Exception:
-                data = {
-                    "error": "browser_engine_http_error",
-                    "status": exc.code,
-                    "detail": raw.decode("utf-8", errors="replace")[:1000],
-                }
-            return int(exc.code), data
-        except Exception as exc:
-            return 502, {"error": "browser_engine_proxy_failed", "detail": str(exc)}
+    try:
+        rebuild_report()
+    except subprocess.CalledProcessError as exc:
+        print(f"Warning: initial creator dashboard build failed: {exc}")
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "YouTubeLibraryCommunity/1.2"
+        server_version = "YouTubeLibraryCentral/2.0"
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -341,6 +262,20 @@ def main() -> None:
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _html(self, status: int, body: str) -> None:
+            data = body.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _html_file(self, path: Path) -> None:
+            try:
+                self._html(200, path.read_text(encoding="utf-8"))
+            except OSError:
+                self._html(404, empty_dashboard())
 
         def _authorized(self) -> bool:
             if not token:
@@ -368,21 +303,36 @@ def main() -> None:
             self.end_headers()
 
         def do_GET(self) -> None:  # noqa: N802
-            if self.path == "/health":
+            path = self.path.split("?", 1)[0]
+            if path in {"/", "/dashboard"}:
+                if report_html.exists():
+                    self._html_file(report_html)
+                else:
+                    self._html(200, empty_dashboard())
+                return
+            if path.startswith("/profile/"):
+                short_id = path[len("/profile/"):].strip()
+                if not PROFILE_SHORT_RE.fullmatch(short_id):
+                    self._html(400, "<h1>Invalid profile id</h1>")
+                    return
+                profile_html = repo_root / "data" / "profile_reports" / f"profile_{short_id}__current.profile.html"
+                if profile_html.exists():
+                    self._html_file(profile_html)
+                else:
+                    self._html(404, f"<h1>Profile chưa có report</h1><p>{html.escape(short_id)}</p><p><a href='/'>Dashboard</a></p>")
+                return
+            if path == "/health":
                 self._json(
                     200,
                     {
                         "ok": True,
-                        "service": "community",
-                        "version": "1.2.0",
-                        "canonical_port": args.port,
+                        "service": "youtube-library-central",
+                        "version": "2.0.0",
+                        "port": args.port,
+                        "single_process": True,
+                        "dashboard": "/",
                         "browser_collect": "/collect",
                         "browser_finalize": "/finalize",
-                        "browser_engine_internal": {
-                            "host": browser_engine_host,
-                            "port": browser_engine_port,
-                            "ready": port_open(browser_engine_host, browser_engine_port),
-                        },
                         "profile_ingest": "/v1/profile",
                         "android_snapshot_ingest": "/v1/android/snapshot",
                     },
@@ -391,12 +341,7 @@ def main() -> None:
             self._json(404, {"error": "not_found"})
 
         def do_POST(self) -> None:  # noqa: N802
-            if self.path not in {
-                "/collect",
-                "/finalize",
-                "/v1/profile",
-                "/v1/android/snapshot",
-            }:
+            if self.path not in {"/collect", "/finalize", "/v1/profile", "/v1/android/snapshot"}:
                 self._json(404, {"error": "not_found"})
                 return
             if not self._authorized():
@@ -406,8 +351,14 @@ def main() -> None:
             if payload is None:
                 return
 
-            if self.path in {"/collect", "/finalize"}:
-                status, response = proxy_browser_engine(self.path, payload)
+            if self.path == "/collect":
+                status, response = browser_pipeline.collect(payload)
+                self._json(status, response)
+            elif self.path == "/finalize":
+                status, response = browser_pipeline.finalize(payload)
+                if status == 200:
+                    response["profile_url"] = f"http://127.0.0.1:{args.port}{response['profile_url']}"
+                    response["dashboard_url"] = f"http://127.0.0.1:{args.port}/"
                 self._json(status, response)
             elif self.path == "/v1/android/snapshot":
                 self._handle_android_snapshot(payload)
@@ -420,22 +371,17 @@ def main() -> None:
                 self._json(400, {"error": "invalid_submission", "details": errors[:20]})
                 return
             assert isinstance(payload, dict)
-
             participant_id = str(payload["participant_id"])
             profile_key = str(payload["profile_key"])
             filename = f"participant_{safe_short(participant_id)}__profile_{safe_short(profile_key)}.json"
             path = input_dir / filename
             with write_lock:
-                path.write_text(
-                    json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-                    encoding="utf-8",
-                )
+                path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 try:
                     rebuild_report()
                     report_status = "updated"
                 except subprocess.CalledProcessError as exc:
                     report_status = f"failed:{exc.returncode}"
-
             self._json(
                 200,
                 {
@@ -443,6 +389,7 @@ def main() -> None:
                     "profile_key": profile_key,
                     "stored": filename,
                     "community_report_status": report_status,
+                    "dashboard_url": f"http://127.0.0.1:{args.port}/",
                 },
             )
 
@@ -454,29 +401,21 @@ def main() -> None:
             assert isinstance(payload, dict)
             snapshot = payload["snapshot"]
             assert isinstance(snapshot, dict)
-
             participant_id = str(payload["participant_id"])
             device_id = str(payload["device_id"])
             profile_slot = str(payload["profile_slot"])
             day = str(snapshot["captured_at"])[:10]
             signature = str(snapshot["tree_signature"])
             surface = str((snapshot.get("surface_guess") or {}).get("surface") or "unknown")
-
             participant_dir = android_ingest_dir / f"participant_{safe_short(participant_id)}"
-            device_dir = participant_dir / (
-                f"device_{safe_short(device_id)}__slot_{safe_short(profile_slot)}"
-            )
+            device_dir = participant_dir / f"device_{safe_short(device_id)}__slot_{safe_short(profile_slot)}"
             path = device_dir / f"{day}.jsonl"
-
             with write_lock:
                 device_dir.mkdir(parents=True, exist_ok=True)
                 duplicate = file_contains_tree_signature(path, signature)
                 if not duplicate:
                     with path.open("a", encoding="utf-8") as handle:
-                        handle.write(
-                            json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
-                        )
-
+                        handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
             self._json(
                 200,
                 {
@@ -490,39 +429,29 @@ def main() -> None:
             )
 
         def log_message(self, format: str, *values: object) -> None:
-            print(f"[community] {self.address_string()} - {format % values}")
+            print(f"[central] {self.address_string()} - {format % values}")
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"YouTube Library Central Server v1.2: http://{args.host}:{args.port}")
-    print("Chrome external API: POST /collect + POST /finalize")
-    print("Android external API: POST /v1/android/snapshot")
-    print("Analyzed profile API: POST /v1/profile")
-    print(
-        f"Chrome transitional engine: internal "
-        f"{browser_engine_host}:{browser_engine_port} "
-        f"({'ready' if port_open(browser_engine_host, browser_engine_port) else 'NOT READY'})"
-    )
-    print(f"Community profiles -> {input_dir}")
-    print(f"Android raw ingest -> {android_ingest_dir}")
-    print(f"Creator report -> {report_html}")
-    if token:
-        print("Bearer token: REQUIRED (YT_LIBRARY_COMMUNITY_TOKEN)")
+    print(f"YouTube Library Central Server v2.0: http://{args.host}:{args.port}")
+    print(f"Dashboard: http://127.0.0.1:{args.port}/")
+    print("Chrome: POST /collect + POST /finalize")
+    print("Android: POST /v1/android/snapshot")
+    print("Community profile: POST /v1/profile")
+    print("Runtime: ONE PROCESS / ONE PORT")
+    if os.environ.get("YOUTUBE_API_KEY"):
+        print("YouTube API enrichment: ENABLED")
     else:
-        print(
-            "Bearer token: disabled; set YT_LIBRARY_COMMUNITY_TOKEN before exposing beyond localhost"
-        )
+        print("YouTube API enrichment: disabled")
+    if token:
+        print("Bearer token: REQUIRED")
+    else:
+        print("Bearer token: disabled; bind localhost unless configuring a protected deployment")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
-        if browser_engine_process is not None and browser_engine_process.poll() is None:
-            browser_engine_process.terminate()
-            try:
-                browser_engine_process.wait(timeout=4)
-            except subprocess.TimeoutExpired:
-                browser_engine_process.kill()
 
 
 if __name__ == "__main__":
