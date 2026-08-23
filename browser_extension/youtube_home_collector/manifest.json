@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YouTube Library Recommendation Collector",
-  "version": "0.3.1",
-  "description": "Read-only collector for YouTube Home and repeated Up Next recommendation sampling. It never clicks or plays videos.",
+  "version": "0.4.0",
+  "description": "Read-only collector for YouTube Home and repeated Up Next evidence, consolidated into one profile-library report. It never clicks or plays videos.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -14,7 +14,7 @@
     "http://127.0.0.1:8765/*"
   ],
   "action": {
-    "default_title": "Collect YouTube recommendations",
+    "default_title": "Collect and update YouTube profile library",
     "default_popup": "popup.html"
   }
 }
