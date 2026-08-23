@@ -1,6 +1,9 @@
 # Local browser profile contains cookies/session data. Never commit it.
 data/browser_profile/
 
+# Local collector identity is random but still installation-specific.
+data/collector_identity.json
+
 # Personalized YouTube recommendation snapshots/results are local by default.
 data/home_snapshots/**/*.json
 data/home_enriched/**/*.json
@@ -17,6 +20,11 @@ data/profile_library/**/*.json
 data/profile_library/**/*.jsonl
 data/collection_sessions/**/*.json
 data/collection_sessions/**/*.html
+
+# Sanitized community submissions/reports remain deployment data, not source code.
+data/community_profiles/**/*.json
+data/community_reports/**/*.json
+data/community_reports/**/*.html
 
 # Phase 6 Viewer Robot cohorts are generated local artifacts. Observed-profile
 # seeded cohorts may inherit personalized priors, so keep all generated batches local.
@@ -39,6 +47,9 @@ data/profile_library/*.json
 data/profile_library/*.jsonl
 data/collection_sessions/*.json
 data/collection_sessions/*.html
+data/community_profiles/*.json
+data/community_reports/*.json
+data/community_reports/*.html
 data/synthetic_viewers/*.json
 data/synthetic_viewers/*.jsonl
 
