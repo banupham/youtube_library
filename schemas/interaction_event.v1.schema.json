@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youtube-library.local/schemas/interaction_event.v1.schema.json",
+  "title": "YouTube Library Natural Interaction Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "participant_id",
+    "device_id",
+    "profile_id",
+    "platform",
+    "captured_at",
+    "event_type",
+    "engagement_score",
+    "score_model",
+    "source"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "participant_id": { "type": "string", "minLength": 4, "maxLength": 200 },
+    "device_id": { "type": "string", "minLength": 4, "maxLength": 200 },
+    "profile_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "profile_slot": { "type": ["string", "null"], "maxLength": 120 },
+    "platform": { "enum": ["browser", "android"] },
+    "captured_at": { "type": "string", "minLength": 10, "maxLength": 80 },
+    "event_type": {
+      "enum": [
+        "video_open",
+        "like",
+        "unlike",
+        "dislike",
+        "undislike",
+        "comment_submit"
+      ]
+    },
+    "engagement_score": { "type": "number", "minimum": -2, "maximum": 2 },
+    "score_model": { "const": "natural_interaction_v1" },
+    "source": { "const": "natural_user_action" },
+    "video_id": { "type": ["string", "null"], "maxLength": 32 },
+    "video_title": { "type": ["string", "null"], "maxLength": 300 },
+    "channel": { "type": ["string", "null"], "maxLength": 240 },
+    "channel_subscription_state": {
+      "enum": ["subscribed", "not_subscribed", "unknown"]
+    },
+    "surface": { "type": ["string", "null"], "maxLength": 80 },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "context": { "type": "object" }
+  }
+}
